@@ -1,0 +1,8 @@
+port: 7880
+rtc:
+  tcp_port: 7881
+  port_range_start: 50000
+  port_range_end: 50020
+  use_external_ip: false
+keys:
+  devkey: 54ff5680291ef292eed976456cbcb409bc59e4f46ded592ba33f2c5a0eafdd19

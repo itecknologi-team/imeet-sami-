@@ -1,15 +1,7 @@
 import { NextFunction, Request, Response } from "express";
-import { z, ZodSchema } from "zod";
-import { AppError } from "../../shared/errors";
+import { z } from "zod";
+import { parseBody } from "../../shared/utils";
 import * as authService from "./auth.service";
-
-function parseBody<T>(schema: ZodSchema<T>, body: unknown): T {
-  const result = schema.safeParse(body);
-  if (!result.success) {
-    throw new AppError(400, result.error.issues[0]?.message ?? "Invalid input");
-  }
-  return result.data;
-}
 
 const signupSchema = z.object({
   name: z.string().min(1, "Name is required"),

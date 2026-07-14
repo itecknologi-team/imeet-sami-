@@ -1,4 +1,4 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+export const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 
 export interface HealthResponse {
   status: "ok";
@@ -68,4 +68,77 @@ export async function logout(refreshToken: string): Promise<{ success: boolean }
     method: "POST",
     body: JSON.stringify({ refreshToken }),
   });
+}
+
+export interface CreateMeetingResponse {
+  id: string;
+  title: string;
+  meetingCode: string;
+  hostId: string;
+  status: string;
+}
+
+export interface MeetingInfo {
+  id: string;
+  title: string;
+  meetingCode: string;
+  status: string;
+  hostName: string;
+}
+
+export interface JoinMeetingResponse {
+  meeting: { id: string; title: string; status: string };
+  livekitToken: string;
+  livekitUrl: string;
+}
+
+export interface Participant {
+  userId: string;
+  name: string;
+  role: string;
+  joinedAt: string;
+}
+
+function authHeader(accessToken: string) {
+  return { Authorization: `Bearer ${accessToken}` };
+}
+
+export async function createMeeting(accessToken: string, title?: string): Promise<CreateMeetingResponse> {
+  return request<CreateMeetingResponse>("/api/meetings", {
+    method: "POST",
+    headers: authHeader(accessToken),
+    body: JSON.stringify({ title }),
+  });
+}
+
+export async function getMeeting(meetingCode: string): Promise<MeetingInfo> {
+  return request<MeetingInfo>(`/api/meetings/${meetingCode}`);
+}
+
+export async function joinMeeting(accessToken: string, meetingCode: string): Promise<JoinMeetingResponse> {
+  return request<JoinMeetingResponse>(`/api/meetings/${meetingCode}/join`, {
+    method: "POST",
+    headers: authHeader(accessToken),
+  });
+}
+
+export async function leaveMeeting(accessToken: string, meetingCode: string): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>(`/api/meetings/${meetingCode}/leave`, {
+    method: "POST",
+    headers: authHeader(accessToken),
+  });
+}
+
+export async function endMeeting(
+  accessToken: string,
+  meetingCode: string,
+): Promise<{ success: boolean; status: string }> {
+  return request<{ success: boolean; status: string }>(`/api/meetings/${meetingCode}/end`, {
+    method: "POST",
+    headers: authHeader(accessToken),
+  });
+}
+
+export async function getParticipants(meetingCode: string): Promise<{ participants: Participant[] }> {
+  return request<{ participants: Participant[] }>(`/api/meetings/${meetingCode}/participants`);
 }

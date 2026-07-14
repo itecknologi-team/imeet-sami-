@@ -3,6 +3,7 @@ import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { AuthProvider } from "./hooks/useAuth";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
+import { MeetingRoomPage } from "./pages/MeetingRoomPage";
 import { SignupPage } from "./pages/SignupPage";
 
 function App() {
@@ -18,6 +19,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/meeting/:meetingCode"
+            element={
+              <ProtectedRoute>
+                <MeetingRoomPage />
               </ProtectedRoute>
             }
           />

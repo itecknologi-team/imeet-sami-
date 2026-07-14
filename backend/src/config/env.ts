@@ -16,4 +16,7 @@ export const env = {
   jwtSecret: process.env.JWT_SECRET ?? "change_this_secret",
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "7d",
   googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
+  livekitUrl: required("LIVEKIT_URL", "ws://localhost:7880"),
+  livekitApiKey: required("LIVEKIT_API_KEY", "devkey"),
+  livekitApiSecret: required("LIVEKIT_API_SECRET"),
 };
