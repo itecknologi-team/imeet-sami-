@@ -15,4 +15,5 @@ export const env = {
   redisUrl: required("REDIS_URL", "redis://localhost:6379"),
   jwtSecret: process.env.JWT_SECRET ?? "change_this_secret",
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? "7d",
+  googleClientId: process.env.GOOGLE_CLIENT_ID ?? "",
 };

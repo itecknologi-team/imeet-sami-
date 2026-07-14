@@ -1,25 +1,29 @@
-import { useEffect, useState } from "react";
-import { getHealth } from "./services/api";
-
-type ConnectionStatus = "checking" | "connected" | "disconnected";
+import { Navigate, Route, BrowserRouter as Router, Routes } from "react-router-dom";
+import { ProtectedRoute } from "./components/auth/ProtectedRoute";
+import { AuthProvider } from "./hooks/useAuth";
+import { DashboardPage } from "./pages/DashboardPage";
+import { LoginPage } from "./pages/LoginPage";
+import { SignupPage } from "./pages/SignupPage";
 
 function App() {
-  const [status, setStatus] = useState<ConnectionStatus>("checking");
-
-  useEffect(() => {
-    getHealth()
-      .then(() => setStatus("connected"))
-      .catch(() => setStatus("disconnected"));
-  }, []);
-
   return (
-    <div className="flex min-h-screen items-center justify-center bg-white dark:bg-gray-900">
-      <p className="text-lg font-medium text-gray-800 dark:text-gray-200">
-        {status === "checking" && "Checking backend connection..."}
-        {status === "connected" && "Connected"}
-        {status === "disconnected" && "Disconnected"}
-      </p>
-    </div>
+    <Router>
+      <AuthProvider>
+        <Routes>
+          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/signup" element={<SignupPage />} />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </AuthProvider>
+    </Router>
   );
 }
 
