@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Track } from "livekit-client";
 import { ChatPanel } from "../components/meeting/ChatPanel";
@@ -20,6 +20,7 @@ export function MeetingRoomPage() {
     () => (user ? { id: user.id, name: user.name } : null),
     [user?.id, user?.name],
   );
+  const [linkCopied, setLinkCopied] = useState(false);
   const {
     room,
     connected,
@@ -60,6 +61,13 @@ export function MeetingRoomPage() {
 
   const isHost = participants.find((p) => p.userId === user?.id)?.role === "host";
 
+  async function handleCopyInviteLink() {
+    const inviteLink = `${window.location.origin}/meeting/${meetingCode}`;
+    await navigator.clipboard.writeText(inviteLink);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
+  }
+
   if (error) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-900">
@@ -84,6 +92,17 @@ export function MeetingRoomPage() {
 
   return (
     <div className="flex min-h-screen flex-col bg-gray-900">
+      <div className="flex items-center justify-between gap-3 border-b border-gray-800 px-4 py-2">
+        <span className="text-sm text-gray-300">
+          Meeting code: <span className="font-mono text-gray-100">{meetingCode}</span>
+        </span>
+        <button
+          onClick={handleCopyInviteLink}
+          className="rounded bg-gray-700 px-3 py-1 text-xs font-medium text-white"
+        >
+          {linkCopied ? "Copied!" : "Copy invite link"}
+        </button>
+      </div>
       <div className="flex flex-1 overflow-hidden">
         <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-4">
           {screenShareParticipantIdentity && (
