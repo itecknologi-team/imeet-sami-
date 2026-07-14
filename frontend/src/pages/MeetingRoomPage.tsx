@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Track } from "livekit-client";
 import { ChatPanel } from "../components/meeting/ChatPanel";
 import { Controls } from "../components/meeting/Controls";
+import { CostCounter } from "../components/meeting/CostCounter";
 import { ParticipantList } from "../components/meeting/ParticipantList";
 import { VideoTile } from "../components/meeting/VideoTile";
 import { useAuth } from "../hooks/useAuth";
@@ -32,7 +33,10 @@ export function MeetingRoomPage() {
     isScreenSharing,
     screenShareParticipantIdentity,
     isRecording,
+    hourlyRate,
+    startedAt,
     meetingEnded,
+    finalCost,
     error,
     toggleMute,
     toggleCamera,
@@ -43,12 +47,6 @@ export function MeetingRoomPage() {
     endMeetingForAll,
   } = useMeeting(meetingCode, accessToken, currentUser);
 
-  useEffect(() => {
-    if (meetingEnded) {
-      navigate("/dashboard");
-    }
-  }, [meetingEnded, navigate]);
-
   async function handleLeave() {
     await leave();
     navigate("/dashboard");
@@ -56,7 +54,6 @@ export function MeetingRoomPage() {
 
   async function handleEndMeeting() {
     await endMeetingForAll();
-    navigate("/dashboard");
   }
 
   const isHost = participants.find((p) => p.userId === user?.id)?.role === "host";
@@ -66,6 +63,25 @@ export function MeetingRoomPage() {
     await navigator.clipboard.writeText(inviteLink);
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2000);
+  }
+
+  if (meetingEnded) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-gray-900">
+        <h1 className="text-xl font-semibold text-gray-100">Meeting ended</h1>
+        {finalCost !== null && (
+          <p className="text-lg text-green-400">
+            Total cost: <span className="font-mono">${finalCost.toFixed(2)}</span>
+          </p>
+        )}
+        <button
+          onClick={() => navigate("/dashboard")}
+          className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white"
+        >
+          Return to Dashboard
+        </button>
+      </div>
+    );
   }
 
   if (error) {
@@ -96,6 +112,7 @@ export function MeetingRoomPage() {
         <span className="text-sm text-gray-300">
           Meeting code: <span className="font-mono text-gray-100">{meetingCode}</span>
         </span>
+        <CostCounter hourlyRate={hourlyRate} startedAt={startedAt} participantCount={participants.length} />
         <button
           onClick={handleCopyInviteLink}
           className="rounded bg-gray-700 px-3 py-1 text-xs font-medium text-white"

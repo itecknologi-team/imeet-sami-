@@ -8,6 +8,7 @@ export function DashboardPage() {
   const { user, accessToken, logout } = useAuth();
   const navigate = useNavigate();
   const [title, setTitle] = useState("");
+  const [hourlyRate, setHourlyRate] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -21,7 +22,8 @@ export function DashboardPage() {
     setError(null);
     if (!accessToken) return;
     try {
-      const meeting = await api.createMeeting(accessToken, title || undefined);
+      const parsedRate = hourlyRate.trim() ? Number(hourlyRate) : undefined;
+      const meeting = await api.createMeeting(accessToken, title || undefined, parsedRate);
       navigate(`/meeting/${meeting.meetingCode}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create meeting");
@@ -65,6 +67,15 @@ export function DashboardPage() {
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Meeting title (optional)"
               className="flex-1 rounded border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+            />
+            <input
+              value={hourlyRate}
+              onChange={(e) => setHourlyRate(e.target.value)}
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Avg $/hr per person (default $50)"
+              className="w-56 rounded border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
             />
             <button type="submit" className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white">
               Create

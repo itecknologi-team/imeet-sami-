@@ -76,6 +76,7 @@ export interface CreateMeetingResponse {
   meetingCode: string;
   hostId: string;
   status: string;
+  hourlyRate: number;
 }
 
 export interface MeetingInfo {
@@ -84,10 +85,13 @@ export interface MeetingInfo {
   meetingCode: string;
   status: string;
   hostName: string;
+  hourlyRate: number;
+  startedAt: string | null;
+  totalCost: number | null;
 }
 
 export interface JoinMeetingResponse {
-  meeting: { id: string; title: string; status: string };
+  meeting: { id: string; title: string; status: string; hourlyRate: number; startedAt: string | null };
   livekitToken: string;
   livekitUrl: string;
 }
@@ -103,11 +107,15 @@ function authHeader(accessToken: string) {
   return { Authorization: `Bearer ${accessToken}` };
 }
 
-export async function createMeeting(accessToken: string, title?: string): Promise<CreateMeetingResponse> {
+export async function createMeeting(
+  accessToken: string,
+  title?: string,
+  hourlyRate?: number,
+): Promise<CreateMeetingResponse> {
   return request<CreateMeetingResponse>("/api/meetings", {
     method: "POST",
     headers: authHeader(accessToken),
-    body: JSON.stringify({ title }),
+    body: JSON.stringify({ title, hourlyRate }),
   });
 }
 
@@ -132,8 +140,8 @@ export async function leaveMeeting(accessToken: string, meetingCode: string): Pr
 export async function endMeeting(
   accessToken: string,
   meetingCode: string,
-): Promise<{ success: boolean; status: string }> {
-  return request<{ success: boolean; status: string }>(`/api/meetings/${meetingCode}/end`, {
+): Promise<{ success: boolean; status: string; totalCost: number }> {
+  return request(`/api/meetings/${meetingCode}/end`, {
     method: "POST",
     headers: authHeader(accessToken),
   });

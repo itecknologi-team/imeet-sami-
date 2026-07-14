@@ -35,7 +35,10 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [screenShareParticipantIdentity, setScreenShareParticipantIdentity] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
+  const [hourlyRate, setHourlyRate] = useState(0);
+  const [startedAt, setStartedAt] = useState<string | null>(null);
   const [meetingEnded, setMeetingEnded] = useState(false);
+  const [finalCost, setFinalCost] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
@@ -82,6 +85,8 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
       try {
         const joinResp = await api.joinMeeting(accessToken!, meetingCode);
         if (cancelled) return;
+        setHourlyRate(joinResp.meeting.hourlyRate);
+        setStartedAt(joinResp.meeting.startedAt);
 
         await room.connect(joinResp.livekitUrl, joinResp.livekitToken);
         if (cancelled) return;
@@ -122,7 +127,10 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
         socket.on("new-message", (msg: ChatMessage) => {
           setMessages((prev) => [...prev, msg]);
         });
-        socket.on("meeting-ended", () => {
+        socket.on("meeting-ended", (payload: { totalCost?: number } | undefined) => {
+          if (typeof payload?.totalCost === "number") {
+            setFinalCost(payload.totalCost);
+          }
           setMeetingEnded(true);
         });
       } catch (err) {
@@ -204,7 +212,9 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
 
   const endMeetingForAll = useCallback(async () => {
     if (accessToken) {
-      await api.endMeeting(accessToken, meetingCode);
+      const result = await api.endMeeting(accessToken, meetingCode);
+      setFinalCost(result.totalCost);
+      setMeetingEnded(true);
     }
   }, [accessToken, meetingCode]);
 
@@ -219,7 +229,10 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
     isScreenSharing,
     screenShareParticipantIdentity,
     isRecording,
+    hourlyRate,
+    startedAt,
     meetingEnded,
+    finalCost,
     error,
     toggleMute,
     toggleCamera,

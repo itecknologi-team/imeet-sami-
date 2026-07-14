@@ -9,9 +9,12 @@ interface MeetingRow {
   title: string;
   meeting_code: string;
   status: string;
+  hourly_rate: string;
+  started_at: string | null;
 }
 
 const CODE_SEGMENT_LENGTHS = [3, 4, 3];
+const DEFAULT_HOURLY_RATE = 50;
 
 function randomSegment(length: number): string {
   const chars = "abcdefghijklmnopqrstuvwxyz";
@@ -32,7 +35,7 @@ function isUniqueViolation(err: unknown): boolean {
 
 async function findMeetingRowByCode(meetingCode: string): Promise<MeetingRow> {
   const { rows } = await pool.query<MeetingRow>(
-    "SELECT id, host_id, title, meeting_code, status FROM meetings WHERE meeting_code = $1",
+    "SELECT id, host_id, title, meeting_code, status, hourly_rate, started_at FROM meetings WHERE meeting_code = $1",
     [meetingCode],
   );
   const row = rows[0];
@@ -42,15 +45,15 @@ async function findMeetingRowByCode(meetingCode: string): Promise<MeetingRow> {
   return row;
 }
 
-export async function createMeeting(hostId: string, title: string | undefined) {
+export async function createMeeting(hostId: string, title: string | undefined, hourlyRate: number | undefined) {
   for (let attempt = 0; attempt < 5; attempt++) {
     const meetingCode = generateMeetingCode();
     try {
       const { rows } = await pool.query<MeetingRow>(
-        `INSERT INTO meetings (host_id, title, meeting_code)
-         VALUES ($1, $2, $3)
-         RETURNING id, host_id, title, meeting_code, status`,
-        [hostId, title ?? "Untitled Meeting", meetingCode],
+        `INSERT INTO meetings (host_id, title, meeting_code, hourly_rate)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, host_id, title, meeting_code, status, hourly_rate, started_at`,
+        [hostId, title ?? "Untitled Meeting", meetingCode, hourlyRate ?? DEFAULT_HOURLY_RATE],
       );
       const meeting = rows[0];
       return {
@@ -59,6 +62,7 @@ export async function createMeeting(hostId: string, title: string | undefined) {
         meetingCode: meeting.meeting_code,
         hostId: meeting.host_id,
         status: meeting.status,
+        hourlyRate: parseFloat(meeting.hourly_rate),
       };
     } catch (err) {
       if (isUniqueViolation(err)) {
@@ -77,8 +81,12 @@ export async function getMeetingByCode(meetingCode: string) {
     meeting_code: string;
     status: string;
     host_name: string;
+    hourly_rate: string;
+    started_at: string | null;
+    total_cost: string | null;
   }>(
-    `SELECT m.id, m.title, m.meeting_code, m.status, u.name AS host_name
+    `SELECT m.id, m.title, m.meeting_code, m.status, u.name AS host_name,
+            m.hourly_rate, m.started_at, m.total_cost
      FROM meetings m JOIN users u ON u.id = m.host_id
      WHERE m.meeting_code = $1`,
     [meetingCode],
@@ -93,6 +101,9 @@ export async function getMeetingByCode(meetingCode: string) {
     meetingCode: row.meeting_code,
     status: row.status,
     hostName: row.host_name,
+    hourlyRate: parseFloat(row.hourly_rate),
+    startedAt: row.started_at,
+    totalCost: row.total_cost !== null ? parseFloat(row.total_cost) : null,
   };
 }
 
@@ -103,10 +114,12 @@ export async function joinMeeting(meetingCode: string, userId: string) {
   }
 
   if (meeting.status === "scheduled") {
-    await pool.query("UPDATE meetings SET status = 'active', started_at = NOW() WHERE id = $1", [
-      meeting.id,
-    ]);
+    const { rows: startedRows } = await pool.query<{ started_at: string }>(
+      "UPDATE meetings SET status = 'active', started_at = NOW() WHERE id = $1 RETURNING started_at",
+      [meeting.id],
+    );
     meeting.status = "active";
+    meeting.started_at = startedRows[0].started_at;
   }
 
   const role = meeting.host_id === userId ? "host" : "participant";
@@ -140,7 +153,13 @@ export async function joinMeeting(meetingCode: string, userId: string) {
   const livekitToken = await accessToken.toJwt();
 
   return {
-    meeting: { id: meeting.id, title: meeting.title, status: meeting.status },
+    meeting: {
+      id: meeting.id,
+      title: meeting.title,
+      status: meeting.status,
+      hourlyRate: parseFloat(meeting.hourly_rate),
+      startedAt: meeting.started_at,
+    },
     livekitToken,
     livekitUrl: env.livekitUrl,
   };
@@ -161,15 +180,26 @@ export async function endMeeting(meetingCode: string, userId: string) {
     throw new AppError(403, "Only host can end the meeting");
   }
 
-  await pool.query("UPDATE meetings SET status = 'ended', ended_at = NOW() WHERE id = $1", [
-    meeting.id,
-  ]);
   await pool.query(
     "UPDATE meeting_participants SET left_at = NOW() WHERE meeting_id = $1 AND left_at IS NULL",
     [meeting.id],
   );
 
-  return { success: true, status: "ended" };
+  const { rows: costRows } = await pool.query<{ total_hours: string | null }>(
+    `SELECT SUM(EXTRACT(EPOCH FROM (left_at - joined_at)) / 3600) AS total_hours
+     FROM meeting_participants
+     WHERE meeting_id = $1`,
+    [meeting.id],
+  );
+  const totalHours = parseFloat(costRows[0]?.total_hours ?? "0") || 0;
+  const totalCost = Math.round(totalHours * parseFloat(meeting.hourly_rate) * 100) / 100;
+
+  await pool.query(
+    "UPDATE meetings SET status = 'ended', ended_at = NOW(), total_cost = $2 WHERE id = $1",
+    [meeting.id, totalCost],
+  );
+
+  return { success: true, status: "ended", totalCost };
 }
 
 export async function getParticipants(meetingCode: string) {

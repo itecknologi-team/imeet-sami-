@@ -6,12 +6,13 @@ import * as meetingsService from "./meetings.service";
 
 const createMeetingSchema = z.object({
   title: z.string().min(1, "Title is required").optional(),
+  hourlyRate: z.number().positive("Hourly rate must be a positive number").optional(),
 });
 
 export async function createMeetingHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const { title } = parseBody(createMeetingSchema, req.body ?? {});
-    const meeting = await meetingsService.createMeeting(req.user!.id, title);
+    const { title, hourlyRate } = parseBody(createMeetingSchema, req.body ?? {});
+    const meeting = await meetingsService.createMeeting(req.user!.id, title, hourlyRate);
     res.status(201).json(meeting);
   } catch (err) {
     next(err);
@@ -48,7 +49,7 @@ export async function leaveMeetingHandler(req: Request, res: Response, next: Nex
 export async function endMeetingHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const result = await meetingsService.endMeeting(req.params.meetingCode, req.user!.id);
-    getIO().to(req.params.meetingCode).emit("meeting-ended");
+    getIO().to(req.params.meetingCode).emit("meeting-ended", { totalCost: result.totalCost });
     res.status(200).json(result);
   } catch (err) {
     next(err);

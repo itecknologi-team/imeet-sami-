@@ -1,0 +1,3 @@
+ALTER TABLE meetings
+  ADD COLUMN hourly_rate NUMERIC(10, 2) NOT NULL DEFAULT 50,
+  ADD COLUMN total_cost NUMERIC(10, 2);
