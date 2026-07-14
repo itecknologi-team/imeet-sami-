@@ -142,3 +142,32 @@ export async function endMeeting(
 export async function getParticipants(meetingCode: string): Promise<{ participants: Participant[] }> {
   return request<{ participants: Participant[] }>(`/api/meetings/${meetingCode}/participants`);
 }
+
+export interface Recording {
+  id: string;
+  fileUrl: string | null;
+  duration: number | null;
+  status: string;
+  createdAt: string;
+}
+
+export async function startRecording(
+  accessToken: string,
+  meetingCode: string,
+): Promise<{ id: string; egressId: string; status: string }> {
+  return request(`/api/meetings/${meetingCode}/recording/start`, {
+    method: "POST",
+    headers: authHeader(accessToken),
+  });
+}
+
+export async function stopRecording(accessToken: string, meetingCode: string): Promise<{ success: boolean }> {
+  return request(`/api/meetings/${meetingCode}/recording/stop`, {
+    method: "POST",
+    headers: authHeader(accessToken),
+  });
+}
+
+export async function getRecordings(meetingCode: string): Promise<{ recordings: Recording[] }> {
+  return request<{ recordings: Recording[] }>(`/api/meetings/${meetingCode}/recordings`);
+}

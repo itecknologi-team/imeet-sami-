@@ -2,6 +2,7 @@ import cors from "cors";
 import express, { Application, NextFunction, Request, Response } from "express";
 import authRoutes from "./modules/auth/auth.routes";
 import meetingsRoutes from "./modules/meetings/meetings.routes";
+import webhooksRoutes from "./modules/recordings/webhooks.routes";
 import { AppError } from "./shared/errors";
 import { HealthResponse } from "./shared/types";
 
@@ -21,6 +22,7 @@ export function createApp(): Application {
 
   app.use("/api/auth", authRoutes);
   app.use("/api/meetings", meetingsRoutes);
+  app.use("/api/webhooks", webhooksRoutes);
 
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (err instanceof AppError) {

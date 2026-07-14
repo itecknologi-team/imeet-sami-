@@ -19,4 +19,9 @@ export const env = {
   livekitUrl: required("LIVEKIT_URL", "ws://localhost:7880"),
   livekitApiKey: required("LIVEKIT_API_KEY", "devkey"),
   livekitApiSecret: required("LIVEKIT_API_SECRET"),
+  s3Bucket: required("S3_BUCKET", "recordings"),
+  s3AccessKey: required("S3_ACCESS_KEY"),
+  s3SecretKey: required("S3_SECRET_KEY"),
+  s3Endpoint: required("S3_ENDPOINT", "http://localhost:9000"),
+  s3Region: process.env.S3_REGION ?? "us-east-1",
 };

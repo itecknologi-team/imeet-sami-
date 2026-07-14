@@ -24,6 +24,47 @@ services:
       - "50000-50020:50000-50020/udp"
     volumes:
       - ./livekit.yaml:/etc/livekit.yaml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - redis
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 minioadmin minioadmin123; do sleep 1; done;
+      mc mb -p local/recordings;
+      mc anonymous set download local/recordings;
+      exit 0;
+      "
+
+  egress:
+    image: livekit/egress:latest
+    network_mode: host
+    volumes:
+      - ./egress.yaml:/etc/egress.yaml:ro
+    environment:
+      EGRESS_CONFIG_FILE: /etc/egress.yaml
+    depends_on:
+      - livekit
+      - redis
+      - minio
 
 volumes:
   pgdata:
+  miniodata:

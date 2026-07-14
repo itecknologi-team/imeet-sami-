@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Room, RoomEvent, RemoteParticipant } from "livekit-client";
+import { Room, RoomEvent, RemoteParticipant, Track } from "livekit-client";
+import type { LocalTrackPublication, RemoteTrackPublication, Participant } from "livekit-client";
 import type { Socket } from "socket.io-client";
 import * as api from "../services/api";
 import { createMeetingSocket } from "../services/socket";
@@ -31,6 +32,9 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOn, setIsCameraOn] = useState(true);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [screenShareParticipantIdentity, setScreenShareParticipantIdentity] = useState<string | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
   const [meetingEnded, setMeetingEnded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -48,8 +52,31 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
     function handleParticipantDisconnected(participant: RemoteParticipant) {
       setRemoteParticipants((prev) => prev.filter((p) => p.identity !== participant.identity));
     }
+    function handleTrackPublished(
+      publication: RemoteTrackPublication | LocalTrackPublication,
+      participant: Participant,
+    ) {
+      if (publication.source === Track.Source.ScreenShare) {
+        setScreenShareParticipantIdentity(participant.identity);
+      }
+    }
+    function handleTrackUnpublished(
+      publication: RemoteTrackPublication | LocalTrackPublication,
+      participant: Participant,
+    ) {
+      if (publication.source === Track.Source.ScreenShare) {
+        setScreenShareParticipantIdentity((prev) => (prev === participant.identity ? null : prev));
+        if (participant.identity === room.localParticipant.identity) {
+          setIsScreenSharing(false);
+        }
+      }
+    }
     room.on(RoomEvent.ParticipantConnected, handleParticipantConnected);
     room.on(RoomEvent.ParticipantDisconnected, handleParticipantDisconnected);
+    room.on(RoomEvent.TrackPublished, handleTrackPublished);
+    room.on(RoomEvent.TrackUnpublished, handleTrackUnpublished);
+    room.on(RoomEvent.LocalTrackPublished, handleTrackPublished);
+    room.on(RoomEvent.LocalTrackUnpublished, handleTrackUnpublished);
 
     async function setup() {
       try {
@@ -66,6 +93,11 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
 
         const list = await api.getParticipants(meetingCode);
         if (!cancelled) setParticipants(list.participants);
+
+        const recordings = await api.getRecordings(meetingCode).catch(() => ({ recordings: [] }));
+        if (!cancelled) {
+          setIsRecording(recordings.recordings.some((r) => r.status === "recording"));
+        }
 
         const socket = createMeetingSocket();
         socketRef.current = socket;
@@ -100,6 +132,10 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
       cancelled = true;
       room.off(RoomEvent.ParticipantConnected, handleParticipantConnected);
       room.off(RoomEvent.ParticipantDisconnected, handleParticipantDisconnected);
+      room.off(RoomEvent.TrackPublished, handleTrackPublished);
+      room.off(RoomEvent.TrackUnpublished, handleTrackUnpublished);
+      room.off(RoomEvent.LocalTrackPublished, handleTrackPublished);
+      room.off(RoomEvent.LocalTrackUnpublished, handleTrackUnpublished);
       socketRef.current?.disconnect();
       socketRef.current = null;
       room.disconnect();
@@ -119,6 +155,23 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
     setIsCameraOn(next);
     socketRef.current?.emit("toggle-camera", { meetingCode, userId: currentUser?.id, isCameraOn: next });
   }, [isCameraOn, room, meetingCode, currentUser]);
+
+  const toggleScreenShare = useCallback(async () => {
+    const next = !isScreenSharing;
+    await room.localParticipant.setScreenShareEnabled(next, { audio: true });
+    setIsScreenSharing(next);
+  }, [isScreenSharing, room]);
+
+  const toggleRecording = useCallback(async () => {
+    if (!accessToken) return;
+    if (isRecording) {
+      await api.stopRecording(accessToken, meetingCode);
+      setIsRecording(false);
+    } else {
+      await api.startRecording(accessToken, meetingCode);
+      setIsRecording(true);
+    }
+  }, [isRecording, accessToken, meetingCode]);
 
   const sendMessage = useCallback(
     (text: string) => {
@@ -156,10 +209,15 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
     messages,
     isMuted,
     isCameraOn,
+    isScreenSharing,
+    screenShareParticipantIdentity,
+    isRecording,
     meetingEnded,
     error,
     toggleMute,
     toggleCamera,
+    toggleScreenShare,
+    toggleRecording,
     sendMessage,
     leave,
     endMeetingForAll,

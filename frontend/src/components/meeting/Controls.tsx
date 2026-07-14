@@ -1,9 +1,14 @@
 interface ControlsProps {
   isMuted: boolean;
   isCameraOn: boolean;
+  isScreenSharing: boolean;
+  screenShareDisabled: boolean;
+  isRecording: boolean;
   isHost: boolean;
   onToggleMute: () => void;
   onToggleCamera: () => void;
+  onToggleScreenShare: () => void;
+  onToggleRecording: () => void;
   onLeave: () => void;
   onEndMeeting: () => void;
 }
@@ -11,9 +16,14 @@ interface ControlsProps {
 export function Controls({
   isMuted,
   isCameraOn,
+  isScreenSharing,
+  screenShareDisabled,
+  isRecording,
   isHost,
   onToggleMute,
   onToggleCamera,
+  onToggleScreenShare,
+  onToggleRecording,
   onLeave,
   onEndMeeting,
 }: ControlsProps) {
@@ -35,6 +45,25 @@ export function Controls({
       >
         {isCameraOn ? "Stop Camera" : "Start Camera"}
       </button>
+      <button
+        onClick={onToggleScreenShare}
+        disabled={screenShareDisabled}
+        className={`rounded px-4 py-2 text-sm font-medium text-white disabled:opacity-40 ${
+          isScreenSharing ? "bg-blue-600" : "bg-gray-700"
+        }`}
+      >
+        {isScreenSharing ? "Stop Sharing" : "Share Screen"}
+      </button>
+      {isHost && (
+        <button
+          onClick={onToggleRecording}
+          className={`rounded px-4 py-2 text-sm font-medium text-white ${
+            isRecording ? "bg-red-600" : "bg-gray-700"
+          }`}
+        >
+          {isRecording ? "Stop Recording" : "Record"}
+        </button>
+      )}
       <button onClick={onLeave} className="rounded bg-gray-700 px-4 py-2 text-sm font-medium text-white">
         Leave
       </button>

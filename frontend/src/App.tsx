@@ -4,6 +4,7 @@ import { AuthProvider } from "./hooks/useAuth";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { MeetingRoomPage } from "./pages/MeetingRoomPage";
+import { RecordingsPage } from "./pages/RecordingsPage";
 import { SignupPage } from "./pages/SignupPage";
 
 function App() {
@@ -27,6 +28,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <MeetingRoomPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/meeting/:meetingCode/recordings"
+            element={
+              <ProtectedRoute>
+                <RecordingsPage />
               </ProtectedRoute>
             }
           />

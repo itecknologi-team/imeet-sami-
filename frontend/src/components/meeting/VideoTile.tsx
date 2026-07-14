@@ -12,9 +12,15 @@ interface VideoTileProps {
   participant: LocalParticipant | RemoteParticipant;
   name: string;
   isLocal?: boolean;
+  videoSource?: Track.Source;
 }
 
-export function VideoTile({ participant, name, isLocal = false }: VideoTileProps) {
+export function VideoTile({
+  participant,
+  name,
+  isLocal = false,
+  videoSource = Track.Source.Camera,
+}: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
@@ -23,7 +29,7 @@ export function VideoTile({ participant, name, isLocal = false }: VideoTileProps
     const audio = audioRef.current;
 
     function attachExisting() {
-      const videoPub = participant.getTrackPublication(Track.Source.Camera);
+      const videoPub = participant.getTrackPublication(videoSource);
       if (videoPub?.track && video) {
         videoPub.track.attach(video);
       }
@@ -35,10 +41,10 @@ export function VideoTile({ participant, name, isLocal = false }: VideoTileProps
 
     attachExisting();
 
-    function handleTrackEvent(track: RemoteTrack, _publication: RemoteTrackPublication) {
-      if (track.kind === Track.Kind.Video && video) {
+    function handleTrackEvent(track: RemoteTrack, publication: RemoteTrackPublication) {
+      if (publication.source === videoSource && video) {
         track.attach(video);
-      } else if (track.kind === Track.Kind.Audio && !isLocal && audio) {
+      } else if (publication.source === Track.Source.Microphone && !isLocal && audio) {
         track.attach(audio);
       }
     }
@@ -53,10 +59,10 @@ export function VideoTile({ participant, name, isLocal = false }: VideoTileProps
     return () => {
       participant.off(ParticipantEvent.TrackSubscribed, handleTrackEvent);
       participant.off(ParticipantEvent.LocalTrackPublished, handleLocalTrackEvent);
-      participant.getTrackPublication(Track.Source.Camera)?.track?.detach();
+      participant.getTrackPublication(videoSource)?.track?.detach();
       participant.getTrackPublication(Track.Source.Microphone)?.track?.detach();
     };
-  }, [participant, isLocal]);
+  }, [participant, isLocal, videoSource]);
 
   return (
     <div className="relative aspect-video overflow-hidden rounded bg-gray-800">
