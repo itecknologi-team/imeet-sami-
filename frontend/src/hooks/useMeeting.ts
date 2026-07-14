@@ -87,8 +87,14 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
         if (cancelled) return;
         setRemoteParticipants(Array.from(room.remoteParticipants.values()));
 
-        await room.localParticipant.setMicrophoneEnabled(true);
-        await room.localParticipant.setCameraEnabled(true);
+        // Camera/mic may be unavailable or permission may be denied; still
+        // let the participant join and see/hear everyone else.
+        await room.localParticipant.setMicrophoneEnabled(true).catch((micErr) => {
+          console.error("Could not enable microphone:", micErr);
+        });
+        await room.localParticipant.setCameraEnabled(true).catch((camErr) => {
+          console.error("Could not enable camera:", camErr);
+        });
         setConnected(true);
 
         const list = await api.getParticipants(meetingCode);
@@ -120,6 +126,7 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
           setMeetingEnded(true);
         });
       } catch (err) {
+        console.error("useMeeting setup failed:", err);
         if (!cancelled) {
           setError(err instanceof Error ? err.message : "Failed to join meeting");
         }

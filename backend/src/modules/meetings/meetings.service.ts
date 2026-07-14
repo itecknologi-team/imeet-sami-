@@ -110,17 +110,15 @@ export async function joinMeeting(meetingCode: string, userId: string) {
   }
 
   const role = meeting.host_id === userId ? "host" : "participant";
-  const existing = await pool.query(
-    "SELECT id FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2 AND left_at IS NULL",
-    [meeting.id, userId],
+  // ON CONFLICT (backed by a partial unique index on active rows) makes this
+  // safe against concurrent join calls for the same user, instead of a
+  // separate check-then-insert that's racy under concurrent requests.
+  await pool.query(
+    `INSERT INTO meeting_participants (meeting_id, user_id, role, joined_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (meeting_id, user_id) WHERE left_at IS NULL DO NOTHING`,
+    [meeting.id, userId, role],
   );
-  if (existing.rows.length === 0) {
-    await pool.query(
-      `INSERT INTO meeting_participants (meeting_id, user_id, role, joined_at)
-       VALUES ($1, $2, $3, NOW())`,
-      [meeting.id, userId, role],
-    );
-  }
 
   const { rows: userRows } = await pool.query<{ name: string }>(
     "SELECT name FROM users WHERE id = $1",

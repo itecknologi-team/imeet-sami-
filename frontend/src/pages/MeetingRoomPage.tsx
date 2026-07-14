@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Track } from "livekit-client";
 import { ChatPanel } from "../components/meeting/ChatPanel";
@@ -13,7 +13,13 @@ export function MeetingRoomPage() {
   const { user, accessToken } = useAuth();
   const navigate = useNavigate();
 
-  const currentUser = user ? { id: user.id, name: user.name } : null;
+  // Keep this referentially stable across renders — useMeeting's join
+  // effect depends on it, and a fresh object every render would tear down
+  // and reconnect the room in an infinite loop.
+  const currentUser = useMemo(
+    () => (user ? { id: user.id, name: user.name } : null),
+    [user?.id, user?.name],
+  );
   const {
     room,
     connected,
