@@ -180,9 +180,18 @@ export async function getRecordings(meetingCode: string): Promise<{ recordings: 
   return request<{ recordings: Recording[] }>(`/api/meetings/${meetingCode}/recordings`);
 }
 
+export interface Highlight {
+  id: string;
+  kind: "note" | "key_moment";
+  startSeconds: number;
+  endSeconds: number | null;
+  label: string;
+}
+
 export interface RecapResponse {
-  transcript: { status: string; content: string | null } | null;
+  transcript: { status: string; content: string | null; recordingId: string } | null;
   summary: { status: string; summaryText: string | null; actionItems: string[] | null } | null;
+  highlights: Highlight[];
 }
 
 export async function getRecap(meetingCode: string): Promise<RecapResponse> {

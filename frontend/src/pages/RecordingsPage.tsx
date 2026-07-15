@@ -1,11 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import * as api from "../services/api";
 
 function formatDuration(seconds: number | null): string {
   if (seconds === null) return "";
   const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
+  const s = Math.floor(seconds % 60);
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
@@ -18,6 +18,33 @@ export function RecordingsPage() {
   const [recordings, setRecordings] = useState<api.Recording[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [recap, setRecap] = useState<api.RecapResponse | null>(null);
+  const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
+  const pauseListenerRef = useRef<{ video: HTMLVideoElement; listener: () => void } | null>(null);
+
+  function seekTo(recordingId: string, start: number, end: number | null) {
+    const video = videoRefs.current[recordingId];
+    if (!video) return;
+
+    if (pauseListenerRef.current) {
+      pauseListenerRef.current.video.removeEventListener("timeupdate", pauseListenerRef.current.listener);
+      pauseListenerRef.current = null;
+    }
+
+    video.currentTime = start;
+    video.play();
+
+    if (end !== null) {
+      const listener = () => {
+        if (video.currentTime >= end) {
+          video.pause();
+          video.removeEventListener("timeupdate", listener);
+          pauseListenerRef.current = null;
+        }
+      };
+      video.addEventListener("timeupdate", listener);
+      pauseListenerRef.current = { video, listener };
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -87,7 +114,14 @@ export function RecordingsPage() {
                 </span>
               </div>
               {recording.status === "completed" && recording.fileUrl ? (
-                <video src={recording.fileUrl} controls className="w-full rounded" />
+                <video
+                  ref={(el) => {
+                    videoRefs.current[recording.id] = el;
+                  }}
+                  src={recording.fileUrl}
+                  controls
+                  className="w-full rounded"
+                />
               ) : (
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   {recording.status === "recording" ? "Recording in progress..." : "Processing..."}
@@ -124,6 +158,49 @@ export function RecordingsPage() {
             )}
             {recap.transcript?.status === "failed" && (
               <p className="text-sm text-red-600">Transcription failed.</p>
+            )}
+
+            {recap.highlights.filter((h) => h.kind === "note").length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Notes</h3>
+                <ul className="mt-2 space-y-1 text-sm">
+                  {recap.highlights
+                    .filter((h) => h.kind === "note")
+                    .map((h) => (
+                      <li key={h.id}>
+                        <button
+                          onClick={() => recap.transcript && seekTo(recap.transcript.recordingId, h.startSeconds, null)}
+                          className="text-left text-blue-600 hover:underline"
+                        >
+                          {formatDuration(h.startSeconds)} — {h.label}
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+            )}
+
+            {recap.highlights.filter((h) => h.kind === "key_moment").length > 0 && (
+              <div>
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Key Moments</h3>
+                <ul className="mt-2 space-y-1 text-sm">
+                  {recap.highlights
+                    .filter((h) => h.kind === "key_moment")
+                    .map((h) => (
+                      <li key={h.id}>
+                        <button
+                          onClick={() =>
+                            recap.transcript && seekTo(recap.transcript.recordingId, h.startSeconds, h.endSeconds)
+                          }
+                          className="text-left text-blue-600 hover:underline"
+                        >
+                          {formatDuration(h.startSeconds)}
+                          {h.endSeconds !== null && `–${formatDuration(h.endSeconds)}`} — {h.label}
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              </div>
             )}
 
             {recap.transcript?.status === "completed" && recap.transcript.content && (
