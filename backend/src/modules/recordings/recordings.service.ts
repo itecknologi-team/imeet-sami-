@@ -141,10 +141,9 @@ export async function completeRecording(
   fileUrl: string | null,
   durationSeconds: number | null,
 ) {
-  await pool.query("UPDATE recordings SET status = $1, file_url = $2, duration = $3 WHERE egress_id = $4", [
-    status,
-    fileUrl,
-    durationSeconds,
-    egressId,
-  ]);
+  const { rows } = await pool.query<{ id: string }>(
+    "UPDATE recordings SET status = $1, file_url = $2, duration = $3 WHERE egress_id = $4 RETURNING id",
+    [status, fileUrl, durationSeconds, egressId],
+  );
+  return rows[0] ?? null;
 }

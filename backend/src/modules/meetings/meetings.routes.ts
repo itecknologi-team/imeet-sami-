@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../auth/auth.middleware";
 import * as meetingsController from "./meetings.controller";
 import * as recordingsController from "../recordings/recordings.controller";
+import * as transcriptionController from "../transcription/transcription.controller";
 
 const router = Router();
 
@@ -14,5 +15,6 @@ router.get("/:meetingCode/participants", meetingsController.getParticipantsHandl
 router.post("/:meetingCode/recording/start", requireAuth, recordingsController.startRecordingHandler);
 router.post("/:meetingCode/recording/stop", requireAuth, recordingsController.stopRecordingHandler);
 router.get("/:meetingCode/recordings", recordingsController.listRecordingsHandler);
+router.get("/:meetingCode/recap", transcriptionController.getRecapHandler);
 
 export default router;

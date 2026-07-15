@@ -24,4 +24,6 @@ export const env = {
   s3SecretKey: required("S3_SECRET_KEY"),
   s3Endpoint: required("S3_ENDPOINT", "http://localhost:9000"),
   s3Region: process.env.S3_REGION ?? "us-east-1",
+  openaiApiKey: process.env.OPENAI_API_KEY ?? "",
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
 };

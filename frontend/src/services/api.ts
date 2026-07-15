@@ -179,3 +179,12 @@ export async function stopRecording(accessToken: string, meetingCode: string): P
 export async function getRecordings(meetingCode: string): Promise<{ recordings: Recording[] }> {
   return request<{ recordings: Recording[] }>(`/api/meetings/${meetingCode}/recordings`);
 }
+
+export interface RecapResponse {
+  transcript: { status: string; content: string | null } | null;
+  summary: { status: string; summaryText: string | null; actionItems: string[] | null } | null;
+}
+
+export async function getRecap(meetingCode: string): Promise<RecapResponse> {
+  return request<RecapResponse>(`/api/meetings/${meetingCode}/recap`);
+}

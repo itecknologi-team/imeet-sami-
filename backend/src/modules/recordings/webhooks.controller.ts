@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { EgressStatus, WebhookReceiver } from "livekit-server-sdk";
 import { env } from "../../config/env";
 import * as recordingsService from "./recordings.service";
+import * as transcriptionService from "../transcription/transcription.service";
 
 const webhookReceiver = new WebhookReceiver(env.livekitApiKey, env.livekitApiSecret);
 
@@ -29,12 +30,20 @@ export async function livekitWebhookHandler(req: Request, res: Response) {
       const info = event.egressInfo;
       const fileResult = info.fileResults[0];
       const completed = info.status === EgressStatus.EGRESS_COMPLETE;
-      await recordingsService.completeRecording(
+      const recording = await recordingsService.completeRecording(
         info.egressId,
         completed ? "completed" : "failed",
         fileResult ? normalizeFileUrl(fileResult.location) : null,
         fileResult ? Number(fileResult.duration / 1_000_000_000n) : null,
       );
+
+      if (completed && recording) {
+        // Fire-and-forget: transcription can take a while and must not
+        // delay or fail this webhook response (LiveKit retries on error).
+        transcriptionService.transcribeRecording(recording.id).catch((err) => {
+          console.error(`Failed to kick off transcription for recording ${recording.id}:`, err);
+        });
+      }
     }
 
     res.status(200).json({ received: true });
