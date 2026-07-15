@@ -3,12 +3,16 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { Track } from "livekit-client";
 import { CaptionsOverlay } from "../components/meeting/CaptionsOverlay";
 import { ChatPanel } from "../components/meeting/ChatPanel";
+import { CodeEditorPanel } from "../components/meeting/CodeEditorPanel";
 import { Controls } from "../components/meeting/Controls";
 import { CostCounter } from "../components/meeting/CostCounter";
 import { ParticipantList } from "../components/meeting/ParticipantList";
 import { VideoTile } from "../components/meeting/VideoTile";
+import { WhiteboardPanel } from "../components/meeting/WhiteboardPanel";
 import { useAuth } from "../hooks/useAuth";
 import { useMeeting } from "../hooks/useMeeting";
+
+type ActiveView = "video" | "whiteboard" | "code";
 
 export function MeetingRoomPage() {
   const { meetingCode = "" } = useParams<{ meetingCode: string }>();
@@ -23,6 +27,7 @@ export function MeetingRoomPage() {
     [user?.id, user?.name],
   );
   const [linkCopied, setLinkCopied] = useState(false);
+  const [activeView, setActiveView] = useState<ActiveView>("video");
   const {
     room,
     connected,
@@ -50,6 +55,9 @@ export function MeetingRoomPage() {
     captions,
     toggleCaptions,
     setCaptionLanguage,
+    socket,
+    ydoc,
+    whiteboardHistoryRef,
     leave,
     endMeetingForAll,
   } = useMeeting(meetingCode, accessToken, currentUser);
@@ -128,7 +136,25 @@ export function MeetingRoomPage() {
         </button>
       </div>
       <div className="flex flex-1 overflow-hidden">
-        <div className="flex flex-1 flex-col gap-2 overflow-y-auto p-4">
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex gap-2 border-b border-gray-800 px-3 py-1.5">
+            {(["video", "whiteboard", "code"] as const).map((view) => (
+              <button
+                key={view}
+                onClick={() => setActiveView(view)}
+                className={`rounded px-3 py-1 text-xs font-medium capitalize ${
+                  activeView === view ? "bg-blue-600 text-white" : "text-gray-400 hover:text-gray-200"
+                }`}
+              >
+                {view}
+              </button>
+            ))}
+          </div>
+          <div
+            className={
+              activeView === "video" ? "flex flex-1 flex-col gap-2 overflow-y-auto p-4" : "hidden"
+            }
+          >
           {screenShareParticipantIdentity && (
             <div className="flex-[3]">
               {isLocalScreenShare && (
@@ -161,6 +187,17 @@ export function MeetingRoomPage() {
               />
             ))}
           </div>
+          </div>
+          {activeView === "whiteboard" && (
+            <div className="flex-1 overflow-hidden">
+              <WhiteboardPanel socket={socket} meetingCode={meetingCode} historyRef={whiteboardHistoryRef} />
+            </div>
+          )}
+          {activeView === "code" && (
+            <div className="flex-1 overflow-hidden">
+              <CodeEditorPanel ydoc={ydoc} />
+            </div>
+          )}
         </div>
         <div className="flex w-72 flex-col divide-y divide-gray-800 border-l border-gray-800">
           <div className="flex items-center justify-between px-4 py-2">

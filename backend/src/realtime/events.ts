@@ -1,6 +1,8 @@
 import { Server as IOServer, Socket } from "socket.io";
 import * as assistantService from "../modules/assistant/assistant.service";
 import * as captionsService from "../modules/captions/captions.service";
+import * as whiteboardService from "../modules/whiteboard/whiteboard.service";
+import * as codeEditorService from "../modules/codeEditor/codeEditor.service";
 
 interface JoinRoomPayload {
   meetingCode: string;
@@ -45,6 +47,28 @@ interface SetCaptionLanguagePayload {
   language: string;
 }
 
+interface WhiteboardStrokeStartPayload {
+  meetingCode: string;
+  strokeId: string;
+  color: string;
+  point: { x: number; y: number };
+}
+
+interface WhiteboardPointPayload {
+  meetingCode: string;
+  strokeId: string;
+  point: { x: number; y: number };
+}
+
+interface WhiteboardClearPayload {
+  meetingCode: string;
+}
+
+interface CodeUpdatePayload {
+  meetingCode: string;
+  update: Uint8Array;
+}
+
 interface SocketData {
   meetingCode?: string;
   userId?: string;
@@ -56,6 +80,8 @@ export function registerMeetingEvents(io: IOServer, socket: Socket) {
     socket.data.userId = userId;
     socket.join(meetingCode);
     socket.to(meetingCode).emit("user-joined", { userId, name });
+    socket.emit("whiteboard-history", whiteboardService.getHistory(meetingCode));
+    socket.emit("code-sync", codeEditorService.getStateAsUpdate(meetingCode));
   });
 
   socket.on("leave-room", ({ meetingCode, userId }: LeaveRoomPayload) => {
@@ -98,6 +124,29 @@ export function registerMeetingEvents(io: IOServer, socket: Socket) {
       console.error(`AI assistant failed for meeting ${meetingCode}:`, err);
       io.to(meetingCode).emit("ai-response-error", { requestId });
     }
+  });
+
+  socket.on(
+    "whiteboard-stroke-start",
+    ({ meetingCode, strokeId, color, point }: WhiteboardStrokeStartPayload) => {
+      whiteboardService.startStroke(meetingCode, strokeId, color, point);
+      socket.to(meetingCode).emit("whiteboard-stroke-start", { strokeId, color, point });
+    },
+  );
+
+  socket.on("whiteboard-point", ({ meetingCode, strokeId, point }: WhiteboardPointPayload) => {
+    whiteboardService.addPoint(meetingCode, strokeId, point);
+    socket.to(meetingCode).emit("whiteboard-point", { strokeId, point });
+  });
+
+  socket.on("whiteboard-clear", ({ meetingCode }: WhiteboardClearPayload) => {
+    whiteboardService.clear(meetingCode);
+    socket.to(meetingCode).emit("whiteboard-clear");
+  });
+
+  socket.on("code-update", ({ meetingCode, update }: CodeUpdatePayload) => {
+    codeEditorService.applyUpdate(meetingCode, update);
+    socket.to(meetingCode).emit("code-update", update);
   });
 
   socket.on("toggle-mute", ({ meetingCode, userId, isMuted }: ToggleMutePayload) => {

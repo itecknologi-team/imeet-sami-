@@ -2,8 +2,20 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Room, RoomEvent, RemoteParticipant, Track } from "livekit-client";
 import type { LocalTrackPublication, RemoteTrackPublication, Participant } from "livekit-client";
 import type { Socket } from "socket.io-client";
+import * as Y from "yjs";
 import * as api from "../services/api";
 import { createMeetingSocket } from "../services/socket";
+
+export interface WhiteboardPoint {
+  x: number;
+  y: number;
+}
+
+export interface WhiteboardStroke {
+  id: string;
+  color: string;
+  points: WhiteboardPoint[];
+}
 
 export interface ChatMessage {
   userId: string;
@@ -55,6 +67,9 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
   const [captionsEnabled, setCaptionsEnabled] = useState(false);
   const [captionLanguage, setCaptionLanguageState] = useState("en");
   const [captions, setCaptions] = useState<CaptionEntry[]>([]);
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const [ydoc] = useState(() => new Y.Doc());
+  const whiteboardHistoryRef = useRef<WhiteboardStroke[]>([]);
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
@@ -127,8 +142,26 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
 
         const socket = createMeetingSocket();
         socketRef.current = socket;
+        setSocket(socket);
         socket.emit("join-room", { meetingCode, userId: user.id, name: user.name });
         socket.emit("set-caption-language", { meetingCode, userId: user.id, language: captionLanguage });
+
+        socket.on("whiteboard-history", (history: WhiteboardStroke[]) => {
+          whiteboardHistoryRef.current = history;
+        });
+        socket.on(
+          "whiteboard-stroke-start",
+          ({ strokeId, color, point }: { strokeId: string; color: string; point: WhiteboardPoint }) => {
+            whiteboardHistoryRef.current.push({ id: strokeId, color, points: [point] });
+          },
+        );
+        socket.on("whiteboard-point", ({ strokeId, point }: { strokeId: string; point: WhiteboardPoint }) => {
+          const stroke = whiteboardHistoryRef.current.find((s) => s.id === strokeId);
+          stroke?.points.push(point);
+        });
+        socket.on("whiteboard-clear", () => {
+          whiteboardHistoryRef.current = [];
+        });
 
         socket.on("user-joined", ({ userId, name }: { userId: string; name: string }) => {
           setParticipants((prev) =>
@@ -212,6 +245,7 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
       room.off(RoomEvent.LocalTrackUnpublished, handleTrackUnpublished);
       socketRef.current?.disconnect();
       socketRef.current = null;
+      setSocket(null);
       room.disconnect();
     };
   }, [meetingCode, accessToken, currentUser, room]);
@@ -276,6 +310,32 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
       }
     };
   }, [captionsEnabled, connected, isMuted, room, meetingCode, accessToken]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    function handleLocalUpdate(update: Uint8Array, origin: unknown) {
+      if (origin !== "remote") {
+        socket!.emit("code-update", { meetingCode, update });
+      }
+    }
+    function handleRemoteUpdate(update: Uint8Array | ArrayBuffer) {
+      // Socket.io delivers binary payloads to the browser as ArrayBuffer, not
+      // Uint8Array — Yjs's decoder needs a real typed array or it throws.
+      const bytes = update instanceof Uint8Array ? update : new Uint8Array(update);
+      Y.applyUpdate(ydoc, bytes, "remote");
+    }
+
+    ydoc.on("update", handleLocalUpdate);
+    socket.on("code-update", handleRemoteUpdate);
+    socket.on("code-sync", handleRemoteUpdate);
+
+    return () => {
+      ydoc.off("update", handleLocalUpdate);
+      socket.off("code-update", handleRemoteUpdate);
+      socket.off("code-sync", handleRemoteUpdate);
+    };
+  }, [socket, ydoc, meetingCode]);
 
   const toggleMute = useCallback(async () => {
     const next = !isMuted;
@@ -384,6 +444,9 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
     captionsEnabled,
     captionLanguage,
     captions,
+    socket,
+    ydoc,
+    whiteboardHistoryRef,
     toggleMute,
     toggleCamera,
     toggleScreenShare,

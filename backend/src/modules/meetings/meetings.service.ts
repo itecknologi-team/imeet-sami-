@@ -4,6 +4,8 @@ import { env } from "../../config/env";
 import { AppError } from "../../shared/errors";
 import * as assistantService from "../assistant/assistant.service";
 import * as captionsService from "../captions/captions.service";
+import * as whiteboardService from "../whiteboard/whiteboard.service";
+import * as codeEditorService from "../codeEditor/codeEditor.service";
 
 interface MeetingRow {
   id: string;
@@ -203,6 +205,8 @@ export async function endMeeting(meetingCode: string, userId: string) {
 
   assistantService.clearBuffer(meetingCode);
   captionsService.clearMeeting(meetingCode);
+  whiteboardService.clear(meetingCode);
+  codeEditorService.clear(meetingCode);
 
   return { success: true, status: "ended", totalCost };
 }
