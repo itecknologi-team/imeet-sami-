@@ -5,10 +5,12 @@ interface ControlsProps {
   screenShareDisabled: boolean;
   isRecording: boolean;
   isHost: boolean;
+  captionsEnabled: boolean;
   onToggleMute: () => void;
   onToggleCamera: () => void;
   onToggleScreenShare: () => void;
   onToggleRecording: () => void;
+  onToggleCaptions: () => void;
   onLeave: () => void;
   onEndMeeting: () => void;
 }
@@ -20,10 +22,12 @@ export function Controls({
   screenShareDisabled,
   isRecording,
   isHost,
+  captionsEnabled,
   onToggleMute,
   onToggleCamera,
   onToggleScreenShare,
   onToggleRecording,
+  onToggleCaptions,
   onLeave,
   onEndMeeting,
 }: ControlsProps) {
@@ -64,6 +68,14 @@ export function Controls({
           {isRecording ? "Stop Recording" : "Record"}
         </button>
       )}
+      <button
+        onClick={onToggleCaptions}
+        className={`rounded px-4 py-2 text-sm font-medium text-white ${
+          captionsEnabled ? "bg-purple-600" : "bg-gray-700"
+        }`}
+      >
+        {captionsEnabled ? "Live Captions: On" : "Live Captions: Off"}
+      </button>
       <button onClick={onLeave} className="rounded bg-gray-700 px-4 py-2 text-sm font-medium text-white">
         Leave
       </button>

@@ -197,3 +197,15 @@ export interface RecapResponse {
 export async function getRecap(meetingCode: string): Promise<RecapResponse> {
   return request<RecapResponse>(`/api/meetings/${meetingCode}/recap`);
 }
+
+export async function uploadCaptionChunk(
+  accessToken: string,
+  meetingCode: string,
+  blob: Blob,
+): Promise<void> {
+  await request(`/api/meetings/${meetingCode}/caption-chunk`, {
+    method: "POST",
+    headers: { ...authHeader(accessToken), "Content-Type": "audio/webm" },
+    body: blob,
+  });
+}

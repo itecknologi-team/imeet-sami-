@@ -1,5 +1,6 @@
 import { Server as IOServer, Socket } from "socket.io";
 import * as assistantService from "../modules/assistant/assistant.service";
+import * as captionsService from "../modules/captions/captions.service";
 
 interface JoinRoomPayload {
   meetingCode: string;
@@ -38,6 +39,12 @@ interface AskAIPayload {
   question: string;
 }
 
+interface SetCaptionLanguagePayload {
+  meetingCode: string;
+  userId: string;
+  language: string;
+}
+
 interface SocketData {
   meetingCode?: string;
   userId?: string;
@@ -54,6 +61,10 @@ export function registerMeetingEvents(io: IOServer, socket: Socket) {
   socket.on("leave-room", ({ meetingCode, userId }: LeaveRoomPayload) => {
     socket.leave(meetingCode);
     socket.to(meetingCode).emit("user-left", { userId });
+  });
+
+  socket.on("set-caption-language", ({ meetingCode, userId, language }: SetCaptionLanguagePayload) => {
+    captionsService.setLanguage(meetingCode, userId, language);
   });
 
   socket.on("send-message", ({ meetingCode, userId, name, text }: SendMessagePayload) => {

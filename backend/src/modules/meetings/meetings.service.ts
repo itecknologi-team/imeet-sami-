@@ -3,6 +3,7 @@ import { pool } from "../../config/db";
 import { env } from "../../config/env";
 import { AppError } from "../../shared/errors";
 import * as assistantService from "../assistant/assistant.service";
+import * as captionsService from "../captions/captions.service";
 
 interface MeetingRow {
   id: string;
@@ -201,6 +202,7 @@ export async function endMeeting(meetingCode: string, userId: string) {
   );
 
   assistantService.clearBuffer(meetingCode);
+  captionsService.clearMeeting(meetingCode);
 
   return { success: true, status: "ended", totalCost };
 }

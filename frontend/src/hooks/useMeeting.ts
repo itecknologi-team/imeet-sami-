@@ -15,6 +15,15 @@ export interface ChatMessage {
   streaming?: boolean;
 }
 
+export interface CaptionEntry {
+  id: string;
+  userId: string;
+  name: string;
+  sourceText: string;
+  translations: Record<string, string>;
+  timestamp: string;
+}
+
 export interface MeetingParticipantInfo {
   userId: string;
   name: string;
@@ -43,6 +52,9 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
   const [meetingEnded, setMeetingEnded] = useState(false);
   const [finalCost, setFinalCost] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [captionsEnabled, setCaptionsEnabled] = useState(false);
+  const [captionLanguage, setCaptionLanguageState] = useState("en");
+  const [captions, setCaptions] = useState<CaptionEntry[]>([]);
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
@@ -116,6 +128,7 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
         const socket = createMeetingSocket();
         socketRef.current = socket;
         socket.emit("join-room", { meetingCode, userId: user.id, name: user.name });
+        socket.emit("set-caption-language", { meetingCode, userId: user.id, language: captionLanguage });
 
         socket.on("user-joined", ({ userId, name }: { userId: string; name: string }) => {
           setParticipants((prev) =>
@@ -163,6 +176,16 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
             ),
           );
         });
+        socket.on(
+          "caption",
+          (entry: { userId: string; name: string; sourceText: string; translations: Record<string, string>; timestamp: string }) => {
+            const id = crypto.randomUUID();
+            setCaptions((prev) => [...prev, { id, ...entry }]);
+            setTimeout(() => {
+              setCaptions((prev) => prev.filter((c) => c.id !== id));
+            }, 6000);
+          },
+        );
         socket.on("meeting-ended", (payload: { totalCost?: number } | undefined) => {
           if (typeof payload?.totalCost === "number") {
             setFinalCost(payload.totalCost);
@@ -192,6 +215,67 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
       room.disconnect();
     };
   }, [meetingCode, accessToken, currentUser, room]);
+
+  const CAPTION_CHUNK_MS = 8000;
+
+  useEffect(() => {
+    if (!captionsEnabled || !connected || isMuted || !accessToken) {
+      return;
+    }
+    const token = accessToken;
+
+    let cancelled = false;
+    let activeRecorder: MediaRecorder | null = null;
+
+    async function recordChunk() {
+      if (cancelled) return;
+      const micPublication = room.localParticipant.getTrackPublication(Track.Source.Microphone);
+      const track = micPublication?.track?.mediaStreamTrack;
+      if (!track) {
+        return;
+      }
+
+      const stream = new MediaStream([track]);
+      const chunks: Blob[] = [];
+      const recorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+      activeRecorder = recorder;
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+      const stopped = new Promise<void>((resolve) => {
+        recorder.onstop = () => resolve();
+      });
+
+      recorder.start();
+      await new Promise((resolve) => setTimeout(resolve, CAPTION_CHUNK_MS));
+      if (recorder.state !== "inactive") {
+        recorder.stop();
+      }
+      await stopped;
+      activeRecorder = null;
+      if (cancelled) return;
+
+      if (chunks.length > 0) {
+        const blob = new Blob(chunks, { type: "audio/webm" });
+        api.uploadCaptionChunk(token, meetingCode, blob).catch((err) => {
+          console.error("Failed to upload caption chunk:", err);
+        });
+      }
+
+      if (!cancelled) {
+        recordChunk();
+      }
+    }
+
+    recordChunk();
+
+    return () => {
+      cancelled = true;
+      if (activeRecorder && activeRecorder.state !== "inactive") {
+        activeRecorder.stop();
+      }
+    };
+  }, [captionsEnabled, connected, isMuted, room, meetingCode, accessToken]);
 
   const toggleMute = useCallback(async () => {
     const next = !isMuted;
@@ -250,6 +334,20 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
     [meetingCode, currentUser],
   );
 
+  const toggleCaptions = useCallback(() => {
+    setCaptionsEnabled((prev) => !prev);
+  }, []);
+
+  const setCaptionLanguage = useCallback(
+    (language: string) => {
+      setCaptionLanguageState(language);
+      if (currentUser) {
+        socketRef.current?.emit("set-caption-language", { meetingCode, userId: currentUser.id, language });
+      }
+    },
+    [meetingCode, currentUser],
+  );
+
   const leave = useCallback(async () => {
     if (accessToken) {
       await api.leaveMeeting(accessToken, meetingCode).catch(() => undefined);
@@ -283,12 +381,17 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
     meetingEnded,
     finalCost,
     error,
+    captionsEnabled,
+    captionLanguage,
+    captions,
     toggleMute,
     toggleCamera,
     toggleScreenShare,
     toggleRecording,
     sendMessage,
     askAI,
+    toggleCaptions,
+    setCaptionLanguage,
     leave,
     endMeetingForAll,
   };

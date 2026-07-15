@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Track } from "livekit-client";
+import { CaptionsOverlay } from "../components/meeting/CaptionsOverlay";
 import { ChatPanel } from "../components/meeting/ChatPanel";
 import { Controls } from "../components/meeting/Controls";
 import { CostCounter } from "../components/meeting/CostCounter";
@@ -44,6 +45,11 @@ export function MeetingRoomPage() {
     toggleRecording,
     sendMessage,
     askAI,
+    captionsEnabled,
+    captionLanguage,
+    captions,
+    toggleCaptions,
+    setCaptionLanguage,
     leave,
     endMeetingForAll,
   } = useMeeting(meetingCode, accessToken, currentUser);
@@ -175,6 +181,7 @@ export function MeetingRoomPage() {
           </div>
         </div>
       </div>
+      <CaptionsOverlay captions={captions} language={captionLanguage} onLanguageChange={setCaptionLanguage} />
       <Controls
         isMuted={isMuted}
         isCameraOn={isCameraOn}
@@ -182,10 +189,12 @@ export function MeetingRoomPage() {
         screenShareDisabled={!isScreenSharing && screenShareParticipantIdentity !== null}
         isRecording={isRecording}
         isHost={isHost}
+        captionsEnabled={captionsEnabled}
         onToggleMute={toggleMute}
         onToggleCamera={toggleCamera}
         onToggleScreenShare={toggleScreenShare}
         onToggleRecording={toggleRecording}
+        onToggleCaptions={toggleCaptions}
         onLeave={handleLeave}
         onEndMeeting={handleEndMeeting}
       />

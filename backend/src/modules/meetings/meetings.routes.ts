@@ -1,8 +1,9 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import { requireAuth } from "../auth/auth.middleware";
 import * as meetingsController from "./meetings.controller";
 import * as recordingsController from "../recordings/recordings.controller";
 import * as transcriptionController from "../transcription/transcription.controller";
+import * as captionsController from "../captions/captions.controller";
 
 const router = Router();
 
@@ -16,5 +17,11 @@ router.post("/:meetingCode/recording/start", requireAuth, recordingsController.s
 router.post("/:meetingCode/recording/stop", requireAuth, recordingsController.stopRecordingHandler);
 router.get("/:meetingCode/recordings", recordingsController.listRecordingsHandler);
 router.get("/:meetingCode/recap", transcriptionController.getRecapHandler);
+router.post(
+  "/:meetingCode/caption-chunk",
+  requireAuth,
+  express.raw({ type: "audio/webm", limit: "10mb" }),
+  captionsController.captionChunkHandler,
+);
 
 export default router;
