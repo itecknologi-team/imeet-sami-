@@ -1,4 +1,5 @@
 import { Server as IOServer, Socket } from "socket.io";
+import * as assistantService from "../modules/assistant/assistant.service";
 
 interface JoinRoomPayload {
   meetingCode: string;
@@ -30,6 +31,13 @@ interface ToggleCameraPayload {
   isCameraOn: boolean;
 }
 
+interface AskAIPayload {
+  meetingCode: string;
+  userId: string;
+  name: string;
+  question: string;
+}
+
 interface SocketData {
   meetingCode?: string;
   userId?: string;
@@ -55,6 +63,30 @@ export function registerMeetingEvents(io: IOServer, socket: Socket) {
       text,
       timestamp: new Date().toISOString(),
     });
+    assistantService.appendToBuffer(meetingCode, { name, text });
+  });
+
+  socket.on("ask-ai", async ({ meetingCode, userId, name, question }: AskAIPayload) => {
+    io.to(meetingCode).emit("new-message", {
+      userId,
+      name,
+      text: question,
+      timestamp: new Date().toISOString(),
+    });
+    assistantService.appendToBuffer(meetingCode, { name, text: question });
+
+    const requestId = crypto.randomUUID();
+    io.to(meetingCode).emit("ai-response-start", { requestId });
+    try {
+      const fullText = await assistantService.streamAnswer(meetingCode, question, (delta) => {
+        io.to(meetingCode).emit("ai-response-chunk", { requestId, delta });
+      });
+      assistantService.appendToBuffer(meetingCode, { name: "AI Assistant", text: fullText });
+      io.to(meetingCode).emit("ai-response-end", { requestId });
+    } catch (err) {
+      console.error(`AI assistant failed for meeting ${meetingCode}:`, err);
+      io.to(meetingCode).emit("ai-response-error", { requestId });
+    }
   });
 
   socket.on("toggle-mute", ({ meetingCode, userId, isMuted }: ToggleMutePayload) => {

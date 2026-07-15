@@ -10,6 +10,9 @@ export interface ChatMessage {
   name: string;
   text: string;
   timestamp: string;
+  isAI?: boolean;
+  requestId?: string;
+  streaming?: boolean;
 }
 
 export interface MeetingParticipantInfo {
@@ -127,6 +130,39 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
         socket.on("new-message", (msg: ChatMessage) => {
           setMessages((prev) => [...prev, msg]);
         });
+        socket.on("ai-response-start", ({ requestId }: { requestId: string }) => {
+          setMessages((prev) => [
+            ...prev,
+            {
+              userId: "ai",
+              name: "AI Assistant",
+              text: "",
+              timestamp: new Date().toISOString(),
+              isAI: true,
+              streaming: true,
+              requestId,
+            },
+          ]);
+        });
+        socket.on("ai-response-chunk", ({ requestId, delta }: { requestId: string; delta: string }) => {
+          setMessages((prev) =>
+            prev.map((m) => (m.requestId === requestId ? { ...m, text: m.text + delta } : m)),
+          );
+        });
+        socket.on("ai-response-end", ({ requestId }: { requestId: string }) => {
+          setMessages((prev) =>
+            prev.map((m) => (m.requestId === requestId ? { ...m, streaming: false } : m)),
+          );
+        });
+        socket.on("ai-response-error", ({ requestId }: { requestId: string }) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.requestId === requestId
+                ? { ...m, streaming: false, text: m.text || "Sorry, I couldn't answer that." }
+                : m,
+            ),
+          );
+        });
         socket.on("meeting-ended", (payload: { totalCost?: number } | undefined) => {
           if (typeof payload?.totalCost === "number") {
             setFinalCost(payload.totalCost);
@@ -201,6 +237,19 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
     [meetingCode, currentUser],
   );
 
+  const askAI = useCallback(
+    (question: string) => {
+      if (!currentUser) return;
+      socketRef.current?.emit("ask-ai", {
+        meetingCode,
+        userId: currentUser.id,
+        name: currentUser.name,
+        question,
+      });
+    },
+    [meetingCode, currentUser],
+  );
+
   const leave = useCallback(async () => {
     if (accessToken) {
       await api.leaveMeeting(accessToken, meetingCode).catch(() => undefined);
@@ -239,6 +288,7 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
     toggleScreenShare,
     toggleRecording,
     sendMessage,
+    askAI,
     leave,
     endMeetingForAll,
   };

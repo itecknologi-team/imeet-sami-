@@ -43,6 +43,7 @@ export function MeetingRoomPage() {
     toggleScreenShare,
     toggleRecording,
     sendMessage,
+    askAI,
     leave,
     endMeetingForAll,
   } = useMeeting(meetingCode, accessToken, currentUser);
@@ -170,7 +171,7 @@ export function MeetingRoomPage() {
             <ParticipantList participants={participants} />
           </div>
           <div className="h-1/2">
-            <ChatPanel messages={messages} onSend={sendMessage} />
+            <ChatPanel messages={messages} onSend={sendMessage} onAskAI={askAI} />
           </div>
         </div>
       </div>

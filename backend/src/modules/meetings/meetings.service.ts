@@ -2,6 +2,7 @@ import { AccessToken } from "livekit-server-sdk";
 import { pool } from "../../config/db";
 import { env } from "../../config/env";
 import { AppError } from "../../shared/errors";
+import * as assistantService from "../assistant/assistant.service";
 
 interface MeetingRow {
   id: string;
@@ -198,6 +199,8 @@ export async function endMeeting(meetingCode: string, userId: string) {
     "UPDATE meetings SET status = 'ended', ended_at = NOW(), total_cost = $2 WHERE id = $1",
     [meeting.id, totalCost],
   );
+
+  assistantService.clearBuffer(meetingCode);
 
   return { success: true, status: "ended", totalCost };
 }
