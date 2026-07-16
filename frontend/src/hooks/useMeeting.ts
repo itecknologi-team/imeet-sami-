@@ -17,6 +17,13 @@ export interface WhiteboardStroke {
   points: WhiteboardPoint[];
 }
 
+export interface AvatarPosition {
+  x: number;
+  y: number;
+}
+
+export const VIRTUAL_OFFICE_DEFAULT_POSITION: AvatarPosition = { x: 400, y: 250 };
+
 export interface ChatMessage {
   userId: string;
   name: string;
@@ -69,6 +76,9 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
   const [captions, setCaptions] = useState<CaptionEntry[]>([]);
   const [socket, setSocket] = useState<Socket | null>(null);
   const [ydoc] = useState(() => new Y.Doc());
+  const [audioContext] = useState(() => new AudioContext());
+  const [avatarPositions, setAvatarPositions] = useState<Record<string, AvatarPosition>>({});
+  const [myAvatarPosition, setMyAvatarPosition] = useState<AvatarPosition>(VIRTUAL_OFFICE_DEFAULT_POSITION);
   const whiteboardHistoryRef = useRef<WhiteboardStroke[]>([]);
   const socketRef = useRef<Socket | null>(null);
 
@@ -163,6 +173,13 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
           whiteboardHistoryRef.current = [];
         });
 
+        socket.on("virtual-office-positions", (positions: Record<string, AvatarPosition>) => {
+          setAvatarPositions(positions);
+        });
+        socket.on("avatar-moved", ({ userId, x, y }: { userId: string; x: number; y: number }) => {
+          setAvatarPositions((prev) => ({ ...prev, [userId]: { x, y } }));
+        });
+
         socket.on("user-joined", ({ userId, name }: { userId: string; name: string }) => {
           setParticipants((prev) =>
             prev.some((p) => p.userId === userId)
@@ -172,6 +189,11 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
         });
         socket.on("user-left", ({ userId }: { userId: string }) => {
           setParticipants((prev) => prev.filter((p) => p.userId !== userId));
+          setAvatarPositions((prev) => {
+            const next = { ...prev };
+            delete next[userId];
+            return next;
+          });
         });
         socket.on("new-message", (msg: ChatMessage) => {
           setMessages((prev) => [...prev, msg]);
@@ -408,6 +430,16 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
     [meetingCode, currentUser],
   );
 
+  const moveAvatar = useCallback(
+    (x: number, y: number) => {
+      setMyAvatarPosition({ x, y });
+      if (currentUser) {
+        socketRef.current?.emit("avatar-move", { meetingCode, userId: currentUser.id, x, y });
+      }
+    },
+    [meetingCode, currentUser],
+  );
+
   const leave = useCallback(async () => {
     if (accessToken) {
       await api.leaveMeeting(accessToken, meetingCode).catch(() => undefined);
@@ -446,7 +478,11 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
     captions,
     socket,
     ydoc,
+    audioContext,
+    avatarPositions,
+    myAvatarPosition,
     whiteboardHistoryRef,
+    moveAvatar,
     toggleMute,
     toggleCamera,
     toggleScreenShare,

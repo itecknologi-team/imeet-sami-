@@ -8,11 +8,31 @@ import { Controls } from "../components/meeting/Controls";
 import { CostCounter } from "../components/meeting/CostCounter";
 import { ParticipantList } from "../components/meeting/ParticipantList";
 import { VideoTile } from "../components/meeting/VideoTile";
+import { VirtualOfficePanel } from "../components/meeting/VirtualOfficePanel";
 import { WhiteboardPanel } from "../components/meeting/WhiteboardPanel";
 import { useAuth } from "../hooks/useAuth";
-import { useMeeting } from "../hooks/useMeeting";
+import type { AvatarPosition } from "../hooks/useMeeting";
+import { useMeeting, VIRTUAL_OFFICE_DEFAULT_POSITION } from "../hooks/useMeeting";
 
-type ActiveView = "video" | "whiteboard" | "code";
+type ActiveView = "video" | "whiteboard" | "code" | "virtual-office";
+
+const VIEW_LABELS: Record<ActiveView, string> = {
+  video: "Video",
+  whiteboard: "Whiteboard",
+  code: "Code",
+  "virtual-office": "Virtual Office",
+};
+
+const HEARING_RADIUS = 300;
+
+function computeGainPan(mine: AvatarPosition, other: AvatarPosition): { gain: number; pan: number } {
+  const dx = other.x - mine.x;
+  const dy = other.y - mine.y;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+  const gain = Math.max(0, 1 - distance / HEARING_RADIUS);
+  const pan = Math.max(-1, Math.min(1, dx / HEARING_RADIUS));
+  return { gain, pan };
+}
 
 export function MeetingRoomPage() {
   const { meetingCode = "" } = useParams<{ meetingCode: string }>();
@@ -57,7 +77,11 @@ export function MeetingRoomPage() {
     setCaptionLanguage,
     socket,
     ydoc,
+    audioContext,
+    avatarPositions,
+    myAvatarPosition,
     whiteboardHistoryRef,
+    moveAvatar,
     leave,
     endMeetingForAll,
   } = useMeeting(meetingCode, accessToken, currentUser);
@@ -138,15 +162,15 @@ export function MeetingRoomPage() {
       <div className="flex flex-1 overflow-hidden">
         <div className="flex flex-1 flex-col overflow-hidden">
           <div className="flex gap-2 border-b border-gray-800 px-3 py-1.5">
-            {(["video", "whiteboard", "code"] as const).map((view) => (
+            {(["video", "whiteboard", "code", "virtual-office"] as const).map((view) => (
               <button
                 key={view}
                 onClick={() => setActiveView(view)}
-                className={`rounded px-3 py-1 text-xs font-medium capitalize ${
+                className={`rounded px-3 py-1 text-xs font-medium ${
                   activeView === view ? "bg-blue-600 text-white" : "text-gray-400 hover:text-gray-200"
                 }`}
               >
-                {view}
+                {VIEW_LABELS[view]}
               </button>
             ))}
           </div>
@@ -179,13 +203,25 @@ export function MeetingRoomPage() {
           )}
           <div className="grid flex-1 auto-rows-fr grid-cols-2 gap-2 sm:grid-cols-3">
             <VideoTile participant={room.localParticipant} name={`${currentUser?.name} (You)`} isLocal />
-            {remoteParticipants.map((participant) => (
-              <VideoTile
-                key={participant.identity}
-                participant={participant}
-                name={participants.find((p) => p.userId === participant.identity)?.name ?? participant.identity}
-              />
-            ))}
+            {remoteParticipants.map((participant) => {
+              const spatial =
+                activeView === "virtual-office"
+                  ? computeGainPan(
+                      myAvatarPosition,
+                      avatarPositions[participant.identity] ?? VIRTUAL_OFFICE_DEFAULT_POSITION,
+                    )
+                  : { gain: 1, pan: 0 };
+              return (
+                <VideoTile
+                  key={participant.identity}
+                  participant={participant}
+                  name={participants.find((p) => p.userId === participant.identity)?.name ?? participant.identity}
+                  audioContext={audioContext}
+                  gain={spatial.gain}
+                  pan={spatial.pan}
+                />
+              );
+            })}
           </div>
           </div>
           {activeView === "whiteboard" && (
@@ -196,6 +232,20 @@ export function MeetingRoomPage() {
           {activeView === "code" && (
             <div className="flex-1 overflow-hidden">
               <CodeEditorPanel ydoc={ydoc} />
+            </div>
+          )}
+          {activeView === "virtual-office" && (
+            <div className="flex-1 overflow-hidden">
+              <VirtualOfficePanel
+                myName={currentUser?.name ?? "You"}
+                myPosition={myAvatarPosition}
+                remoteAvatars={remoteParticipants.map((p) => ({
+                  userId: p.identity,
+                  name: participants.find((pp) => pp.userId === p.identity)?.name ?? p.identity,
+                  position: avatarPositions[p.identity] ?? VIRTUAL_OFFICE_DEFAULT_POSITION,
+                }))}
+                onMove={moveAvatar}
+              />
             </div>
           )}
         </div>

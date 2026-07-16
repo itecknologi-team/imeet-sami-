@@ -6,6 +6,7 @@ import * as assistantService from "../assistant/assistant.service";
 import * as captionsService from "../captions/captions.service";
 import * as whiteboardService from "../whiteboard/whiteboard.service";
 import * as codeEditorService from "../codeEditor/codeEditor.service";
+import * as virtualOfficeService from "../virtualOffice/virtualOffice.service";
 
 interface MeetingRow {
   id: string;
@@ -207,6 +208,7 @@ export async function endMeeting(meetingCode: string, userId: string) {
   captionsService.clearMeeting(meetingCode);
   whiteboardService.clear(meetingCode);
   codeEditorService.clear(meetingCode);
+  virtualOfficeService.clear(meetingCode);
 
   return { success: true, status: "ended", totalCost };
 }

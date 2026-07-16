@@ -3,6 +3,7 @@ import * as assistantService from "../modules/assistant/assistant.service";
 import * as captionsService from "../modules/captions/captions.service";
 import * as whiteboardService from "../modules/whiteboard/whiteboard.service";
 import * as codeEditorService from "../modules/codeEditor/codeEditor.service";
+import * as virtualOfficeService from "../modules/virtualOffice/virtualOffice.service";
 
 interface JoinRoomPayload {
   meetingCode: string;
@@ -69,6 +70,13 @@ interface CodeUpdatePayload {
   update: Uint8Array;
 }
 
+interface AvatarMovePayload {
+  meetingCode: string;
+  userId: string;
+  x: number;
+  y: number;
+}
+
 interface SocketData {
   meetingCode?: string;
   userId?: string;
@@ -82,6 +90,7 @@ export function registerMeetingEvents(io: IOServer, socket: Socket) {
     socket.to(meetingCode).emit("user-joined", { userId, name });
     socket.emit("whiteboard-history", whiteboardService.getHistory(meetingCode));
     socket.emit("code-sync", codeEditorService.getStateAsUpdate(meetingCode));
+    socket.emit("virtual-office-positions", virtualOfficeService.getPositions(meetingCode));
   });
 
   socket.on("leave-room", ({ meetingCode, userId }: LeaveRoomPayload) => {
@@ -147,6 +156,11 @@ export function registerMeetingEvents(io: IOServer, socket: Socket) {
   socket.on("code-update", ({ meetingCode, update }: CodeUpdatePayload) => {
     codeEditorService.applyUpdate(meetingCode, update);
     socket.to(meetingCode).emit("code-update", update);
+  });
+
+  socket.on("avatar-move", ({ meetingCode, userId, x, y }: AvatarMovePayload) => {
+    virtualOfficeService.setPosition(meetingCode, userId, x, y);
+    socket.to(meetingCode).emit("avatar-moved", { userId, x, y });
   });
 
   socket.on("toggle-mute", ({ meetingCode, userId, isMuted }: ToggleMutePayload) => {

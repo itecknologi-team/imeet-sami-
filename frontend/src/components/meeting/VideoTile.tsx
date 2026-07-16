@@ -13,6 +13,9 @@ interface VideoTileProps {
   name: string;
   isLocal?: boolean;
   videoSource?: Track.Source;
+  audioContext?: AudioContext;
+  gain?: number;
+  pan?: number;
 }
 
 export function VideoTile({
@@ -20,9 +23,15 @@ export function VideoTile({
   name,
   isLocal = false,
   videoSource = Track.Source.Camera,
+  audioContext,
+  gain = 1,
+  pan = 0,
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const gainNodeRef = useRef<GainNode | null>(null);
+  const pannerNodeRef = useRef<StereoPannerNode | null>(null);
+  const audioGraphCreatedRef = useRef(false);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -63,6 +72,34 @@ export function VideoTile({
       participant.getTrackPublication(Track.Source.Microphone)?.track?.detach();
     };
   }, [participant, isLocal, videoSource]);
+
+  useEffect(() => {
+    if (isLocal || !audioContext || !audioRef.current || audioGraphCreatedRef.current) return;
+    // An HTMLMediaElement can only ever be routed into a Web Audio graph once
+    // via createMediaElementSource — calling it twice throws. StrictMode's
+    // dev-mode double-invoke (mount -> cleanup -> remount) re-runs this effect
+    // body without recreating the <audio> element, so a ref guard (which
+    // survives that double-invoke, unlike a plain local variable) is required.
+    audioGraphCreatedRef.current = true;
+
+    const source = audioContext.createMediaElementSource(audioRef.current);
+    const gainNode = audioContext.createGain();
+    const pannerNode = audioContext.createStereoPanner();
+    source.connect(gainNode).connect(pannerNode).connect(audioContext.destination);
+    gainNodeRef.current = gainNode;
+    pannerNodeRef.current = pannerNode;
+    audioContext.resume().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLocal, audioContext]);
+
+  useEffect(() => {
+    if (gainNodeRef.current) {
+      gainNodeRef.current.gain.value = gain;
+    }
+    if (pannerNodeRef.current) {
+      pannerNodeRef.current.pan.value = pan;
+    }
+  }, [gain, pan]);
 
   return (
     <div className="relative aspect-video overflow-hidden rounded bg-gray-800">
