@@ -4,8 +4,10 @@ import { env } from "../../config/env";
 import { AppError } from "../../shared/errors";
 import * as assistantService from "../assistant/assistant.service";
 import * as captionsService from "../captions/captions.service";
+import * as crmService from "../crm/crm.service";
 import * as whiteboardService from "../whiteboard/whiteboard.service";
 import * as codeEditorService from "../codeEditor/codeEditor.service";
+import * as paymentsService from "../payments/payments.service";
 import * as virtualOfficeService from "../virtualOffice/virtualOffice.service";
 
 interface MeetingRow {
@@ -16,6 +18,7 @@ interface MeetingRow {
   status: string;
   hourly_rate: string;
   started_at: string | null;
+  price_cents: number | null;
 }
 
 const CODE_SEGMENT_LENGTHS = [3, 4, 3];
@@ -40,7 +43,7 @@ function isUniqueViolation(err: unknown): boolean {
 
 async function findMeetingRowByCode(meetingCode: string): Promise<MeetingRow> {
   const { rows } = await pool.query<MeetingRow>(
-    "SELECT id, host_id, title, meeting_code, status, hourly_rate, started_at FROM meetings WHERE meeting_code = $1",
+    "SELECT id, host_id, title, meeting_code, status, hourly_rate, started_at, price_cents FROM meetings WHERE meeting_code = $1",
     [meetingCode],
   );
   const row = rows[0];
@@ -50,15 +53,24 @@ async function findMeetingRowByCode(meetingCode: string): Promise<MeetingRow> {
   return row;
 }
 
-export async function createMeeting(hostId: string, title: string | undefined, hourlyRate: number | undefined) {
+export async function createMeeting(
+  hostId: string,
+  title: string | undefined,
+  hourlyRate: number | undefined,
+  priceCents: number | undefined,
+) {
+  if (priceCents && priceCents > 0 && !env.stripeSecretKey) {
+    throw new AppError(400, "Payments are not configured on this server — cannot create a paid meeting");
+  }
+
   for (let attempt = 0; attempt < 5; attempt++) {
     const meetingCode = generateMeetingCode();
     try {
       const { rows } = await pool.query<MeetingRow>(
-        `INSERT INTO meetings (host_id, title, meeting_code, hourly_rate)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id, host_id, title, meeting_code, status, hourly_rate, started_at`,
-        [hostId, title ?? "Untitled Meeting", meetingCode, hourlyRate ?? DEFAULT_HOURLY_RATE],
+        `INSERT INTO meetings (host_id, title, meeting_code, hourly_rate, price_cents)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, host_id, title, meeting_code, status, hourly_rate, started_at, price_cents`,
+        [hostId, title ?? "Untitled Meeting", meetingCode, hourlyRate ?? DEFAULT_HOURLY_RATE, priceCents ?? null],
       );
       const meeting = rows[0];
       return {
@@ -68,6 +80,7 @@ export async function createMeeting(hostId: string, title: string | undefined, h
         hostId: meeting.host_id,
         status: meeting.status,
         hourlyRate: parseFloat(meeting.hourly_rate),
+        priceCents: meeting.price_cents,
       };
     } catch (err) {
       if (isUniqueViolation(err)) {
@@ -89,9 +102,10 @@ export async function getMeetingByCode(meetingCode: string) {
     hourly_rate: string;
     started_at: string | null;
     total_cost: string | null;
+    price_cents: number | null;
   }>(
     `SELECT m.id, m.title, m.meeting_code, m.status, u.name AS host_name,
-            m.hourly_rate, m.started_at, m.total_cost
+            m.hourly_rate, m.started_at, m.total_cost, m.price_cents
      FROM meetings m JOIN users u ON u.id = m.host_id
      WHERE m.meeting_code = $1`,
     [meetingCode],
@@ -109,6 +123,7 @@ export async function getMeetingByCode(meetingCode: string) {
     hourlyRate: parseFloat(row.hourly_rate),
     startedAt: row.started_at,
     totalCost: row.total_cost !== null ? parseFloat(row.total_cost) : null,
+    priceCents: row.price_cents,
   };
 }
 
@@ -117,6 +132,8 @@ export async function joinMeeting(meetingCode: string, userId: string) {
   if (meeting.status === "ended") {
     throw new AppError(400, "Meeting has ended");
   }
+
+  await paymentsService.requirePaymentIfNeeded(meeting, userId);
 
   if (meeting.status === "scheduled") {
     const { rows: startedRows } = await pool.query<{ started_at: string }>(
@@ -209,6 +226,12 @@ export async function endMeeting(meetingCode: string, userId: string) {
   whiteboardService.clear(meetingCode);
   codeEditorService.clear(meetingCode);
   virtualOfficeService.clear(meetingCode);
+
+  // Fire-and-forget — a slow or broken CRM webhook must never delay or fail
+  // the end-meeting response.
+  crmService.syncMeetingEnd(meeting.id, meetingCode, totalCost).catch((err) => {
+    console.error(`CRM sync failed for meeting ${meetingCode}:`, err);
+  });
 
   return { success: true, status: "ended", totalCost };
 }

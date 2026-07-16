@@ -15,6 +15,7 @@ interface UserRow {
   password_hash: string | null;
   avatar_url: string | null;
   auth_provider: string;
+  crm_webhook_url: string | null;
 }
 
 const googleClient = new OAuth2Client(env.googleClientId || undefined);
@@ -120,7 +121,24 @@ export async function getMe(userId: string) {
   if (!user) {
     throw new AppError(401, "Unauthorized");
   }
-  return { id: user.id, name: user.name, email: user.email, avatarUrl: user.avatar_url };
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    avatarUrl: user.avatar_url,
+    crmWebhookUrl: user.crm_webhook_url,
+  };
+}
+
+export async function updateCrmWebhookUrl(userId: string, webhookUrl: string | null) {
+  const { rows } = await pool.query<{ crm_webhook_url: string | null }>(
+    "UPDATE users SET crm_webhook_url = $2 WHERE id = $1 RETURNING crm_webhook_url",
+    [userId, webhookUrl],
+  );
+  if (!rows[0]) {
+    throw new AppError(401, "Unauthorized");
+  }
+  return { crmWebhookUrl: rows[0].crm_webhook_url };
 }
 
 export async function logout(refreshToken: string) {

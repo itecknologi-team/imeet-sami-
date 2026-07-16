@@ -28,4 +28,6 @@ export const env = {
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
   recordingRetentionDays: parseInt(process.env.RECORDING_RETENTION_DAYS ?? "30", 10),
   recordingCleanupIntervalMs: parseInt(process.env.RECORDING_CLEANUP_INTERVAL_MS ?? "3600000", 10),
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY ?? "",
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? "",
 };

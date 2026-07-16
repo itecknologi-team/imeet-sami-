@@ -9,6 +9,7 @@ router.post("/login", authController.loginHandler);
 router.post("/google", authController.googleHandler);
 router.post("/refresh", authController.refreshHandler);
 router.get("/me", requireAuth, authController.meHandler);
+router.put("/me/crm-webhook", requireAuth, authController.updateCrmWebhookHandler);
 router.post("/logout", authController.logoutHandler);
 
 export default router;

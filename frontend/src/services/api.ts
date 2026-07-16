@@ -16,12 +16,24 @@ export interface MeResponse {
   name: string;
   email: string;
   avatarUrl: string | null;
+  crmWebhookUrl: string | null;
 }
 
 export interface AuthResponse {
   user: AuthUser;
   accessToken: string;
   refreshToken: string;
+}
+
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+    public body: unknown,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -34,7 +46,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error(body?.error ?? `Request failed with status ${res.status}`);
+    throw new ApiError(res.status, body?.error ?? `Request failed with status ${res.status}`, body);
   }
   return body as T;
 }
@@ -77,6 +89,7 @@ export interface CreateMeetingResponse {
   hostId: string;
   status: string;
   hourlyRate: number;
+  priceCents: number | null;
 }
 
 export interface MeetingInfo {
@@ -88,6 +101,7 @@ export interface MeetingInfo {
   hourlyRate: number;
   startedAt: string | null;
   totalCost: number | null;
+  priceCents: number | null;
 }
 
 export interface JoinMeetingResponse {
@@ -111,11 +125,48 @@ export async function createMeeting(
   accessToken: string,
   title?: string,
   hourlyRate?: number,
+  priceCents?: number,
 ): Promise<CreateMeetingResponse> {
   return request<CreateMeetingResponse>("/api/meetings", {
     method: "POST",
     headers: authHeader(accessToken),
-    body: JSON.stringify({ title, hourlyRate }),
+    body: JSON.stringify({ title, hourlyRate, priceCents }),
+  });
+}
+
+export async function createCheckoutSession(
+  accessToken: string,
+  meetingCode: string,
+  successUrl: string,
+  cancelUrl: string,
+): Promise<{ url: string }> {
+  return request<{ url: string }>(`/api/meetings/${meetingCode}/checkout`, {
+    method: "POST",
+    headers: authHeader(accessToken),
+    body: JSON.stringify({ successUrl, cancelUrl }),
+  });
+}
+
+export async function confirmPayment(
+  accessToken: string,
+  meetingCode: string,
+  sessionId: string,
+): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>(`/api/meetings/${meetingCode}/confirm-payment`, {
+    method: "POST",
+    headers: authHeader(accessToken),
+    body: JSON.stringify({ sessionId }),
+  });
+}
+
+export async function updateCrmWebhook(
+  accessToken: string,
+  webhookUrl: string | null,
+): Promise<{ crmWebhookUrl: string | null }> {
+  return request<{ crmWebhookUrl: string | null }>("/api/auth/me/crm-webhook", {
+    method: "PUT",
+    headers: authHeader(accessToken),
+    body: JSON.stringify({ webhookUrl }),
   });
 }
 

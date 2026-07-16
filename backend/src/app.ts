@@ -4,7 +4,7 @@ import authRoutes from "./modules/auth/auth.routes";
 import asyncVideosRoutes from "./modules/asyncVideos/asyncVideos.routes";
 import meetingsRoutes from "./modules/meetings/meetings.routes";
 import webhooksRoutes from "./modules/recordings/webhooks.routes";
-import { AppError } from "./shared/errors";
+import { AppError, PaymentRequiredError } from "./shared/errors";
 import { HealthResponse } from "./shared/types";
 
 export function createApp(): Application {
@@ -28,7 +28,8 @@ export function createApp(): Application {
 
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (err instanceof AppError) {
-      res.status(err.statusCode).json({ error: err.message });
+      const extra = err instanceof PaymentRequiredError ? { priceCents: err.priceCents, currency: err.currency } : {};
+      res.status(err.statusCode).json({ error: err.message, ...extra });
       return;
     }
     console.error(err);

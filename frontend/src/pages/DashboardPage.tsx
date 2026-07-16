@@ -11,8 +11,11 @@ export function DashboardPage() {
   const dyslexiaFont = useDyslexiaFont();
   const [title, setTitle] = useState("");
   const [hourlyRate, setHourlyRate] = useState("");
+  const [price, setPrice] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [crmWebhookUrl, setCrmWebhookUrl] = useState(user?.crmWebhookUrl ?? "");
+  const [crmSaved, setCrmSaved] = useState(false);
 
   async function handleLogout() {
     await logout();
@@ -25,10 +28,24 @@ export function DashboardPage() {
     if (!accessToken) return;
     try {
       const parsedRate = hourlyRate.trim() ? Number(hourlyRate) : undefined;
-      const meeting = await api.createMeeting(accessToken, title || undefined, parsedRate);
+      const parsedPriceCents = price.trim() ? Math.round(Number(price) * 100) : undefined;
+      const meeting = await api.createMeeting(accessToken, title || undefined, parsedRate, parsedPriceCents);
       navigate(`/meeting/${meeting.meetingCode}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create meeting");
+    }
+  }
+
+  async function handleSaveCrmWebhook(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!accessToken) return;
+    try {
+      await api.updateCrmWebhook(accessToken, crmWebhookUrl.trim() || null);
+      setCrmSaved(true);
+      setTimeout(() => setCrmSaved(false), 2000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save CRM webhook");
     }
   }
 
@@ -87,6 +104,17 @@ export function DashboardPage() {
               placeholder="Avg $/hr per person (default $50)"
               className="w-56 rounded border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
             />
+          </div>
+          <div className="flex gap-2">
+            <input
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Price to join $ (optional — paid meeting)"
+              className="flex-1 rounded border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+            />
             <button type="submit" className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white">
               Create
             </button>
@@ -117,6 +145,26 @@ export function DashboardPage() {
             My Videos
           </Link>
         </div>
+
+        <form onSubmit={handleSaveCrmWebhook} className="space-y-2">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">CRM Sync</h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            When your meetings end, a JSON summary (attendees, duration, cost) is POSTed to this URL —
+            point it at Zapier, Make, n8n, or any CRM's incoming-webhook endpoint.
+          </p>
+          <div className="flex gap-2">
+            <input
+              value={crmWebhookUrl}
+              onChange={(e) => setCrmWebhookUrl(e.target.value)}
+              type="url"
+              placeholder="https://your-crm.example.com/webhook"
+              className="flex-1 rounded border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+            />
+            <button type="submit" className="rounded bg-gray-700 px-4 py-2 text-sm font-medium text-white">
+              {crmSaved ? "Saved!" : "Save"}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

@@ -4,6 +4,7 @@ import * as meetingsController from "./meetings.controller";
 import * as recordingsController from "../recordings/recordings.controller";
 import * as transcriptionController from "../transcription/transcription.controller";
 import * as captionsController from "../captions/captions.controller";
+import * as paymentsController from "../payments/payments.controller";
 
 const router = Router();
 
@@ -28,5 +29,7 @@ router.post(
   express.raw({ type: "audio/webm", limit: "10mb" }),
   captionsController.captionChunkHandler,
 );
+router.post("/:meetingCode/checkout", requireAuth, paymentsController.createCheckoutSessionHandler);
+router.post("/:meetingCode/confirm-payment", requireAuth, paymentsController.confirmPaymentHandler);
 
 export default router;

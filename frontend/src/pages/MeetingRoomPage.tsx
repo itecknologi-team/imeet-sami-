@@ -67,6 +67,8 @@ export function MeetingRoomPage() {
     meetingEnded,
     finalCost,
     error,
+    paymentRequired,
+    payAndJoin,
     toggleMute,
     toggleCamera,
     toggleScreenShare,
@@ -122,6 +124,23 @@ export function MeetingRoomPage() {
           className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white"
         >
           Return to Dashboard
+        </button>
+      </div>
+    );
+  }
+
+  if (paymentRequired) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-gray-900">
+        <p className="text-gray-100">
+          This meeting requires a{" "}
+          <span className="font-mono">${(paymentRequired.priceCents / 100).toFixed(2)}</span> payment to join.
+        </p>
+        <button
+          onClick={payAndJoin}
+          className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white"
+        >
+          Pay & Join
         </button>
       </div>
     );

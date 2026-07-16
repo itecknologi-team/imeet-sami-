@@ -22,6 +22,10 @@ const refreshSchema = z.object({
   refreshToken: z.string().min(1, "refreshToken is required"),
 });
 
+const crmWebhookSchema = z.object({
+  webhookUrl: z.string().url("Must be a valid URL").nullable(),
+});
+
 export async function signupHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const { name, email, password } = parseBody(signupSchema, req.body);
@@ -65,6 +69,16 @@ export async function refreshHandler(req: Request, res: Response, next: NextFunc
 export async function meHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const result = await authService.getMe(req.user!.id);
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateCrmWebhookHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { webhookUrl } = parseBody(crmWebhookSchema, req.body);
+    const result = await authService.updateCrmWebhookUrl(req.user!.id, webhookUrl);
     res.status(200).json(result);
   } catch (err) {
     next(err);

@@ -83,6 +83,7 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
   const [meetingEnded, setMeetingEnded] = useState(false);
   const [finalCost, setFinalCost] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [paymentRequired, setPaymentRequired] = useState<{ priceCents: number; currency: string } | null>(null);
   const [captionsEnabled, setCaptionsEnabled] = useState(false);
   const [captionLanguage, setCaptionLanguageState] = useState("en");
   const [captions, setCaptions] = useState<CaptionEntry[]>([]);
@@ -141,6 +142,14 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
 
     async function setup() {
       try {
+        const returningSessionId = new URLSearchParams(window.location.search).get("session_id");
+        if (returningSessionId) {
+          await api.confirmPayment(accessToken!, meetingCode, returningSessionId).catch((err) => {
+            console.error("Payment confirmation failed:", err);
+          });
+          window.history.replaceState({}, "", window.location.pathname);
+        }
+
         const joinResp = await api.joinMeeting(accessToken!, meetingCode);
         if (cancelled) return;
         setHourlyRate(joinResp.meeting.hourlyRate);
@@ -279,7 +288,11 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
         });
       } catch (err) {
         console.error("useMeeting setup failed:", err);
-        if (!cancelled) {
+        if (cancelled) return;
+        if (err instanceof api.ApiError && err.status === 402) {
+          const body = err.body as { priceCents?: number; currency?: string } | null;
+          setPaymentRequired({ priceCents: body?.priceCents ?? 0, currency: body?.currency ?? "usd" });
+        } else {
           setError(err instanceof Error ? err.message : "Failed to join meeting");
         }
       }
@@ -471,6 +484,14 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
     [meetingCode, currentUser],
   );
 
+  const payAndJoin = useCallback(async () => {
+    if (!accessToken) return;
+    const successUrl = `${window.location.origin}/meeting/${meetingCode}?session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${window.location.origin}/dashboard`;
+    const { url } = await api.createCheckoutSession(accessToken, meetingCode, successUrl, cancelUrl);
+    window.location.href = url;
+  }, [accessToken, meetingCode]);
+
   const leave = useCallback(async () => {
     if (accessToken) {
       await api.leaveMeeting(accessToken, meetingCode).catch(() => undefined);
@@ -504,6 +525,8 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
     meetingEnded,
     finalCost,
     error,
+    paymentRequired,
+    payAndJoin,
     captionsEnabled,
     captionLanguage,
     captions,
