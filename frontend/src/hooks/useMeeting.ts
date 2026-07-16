@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Room, RoomEvent, RemoteParticipant, Track } from "livekit-client";
+import {
+  Room,
+  RoomEvent,
+  RemoteParticipant,
+  Track,
+  ExternalE2EEKeyProvider,
+  isE2EESupported,
+} from "livekit-client";
 import type { LocalTrackPublication, RemoteTrackPublication, Participant } from "livekit-client";
 import type { Socket } from "socket.io-client";
 import * as Y from "yjs";
@@ -56,7 +63,12 @@ interface CurrentUser {
 }
 
 export function useMeeting(meetingCode: string, accessToken: string | null, currentUser: CurrentUser | null) {
-  const [room] = useState(() => new Room());
+  const [keyProvider] = useState(() => new ExternalE2EEKeyProvider());
+  const [room] = useState(() => {
+    const worker = new Worker(new URL("livekit-client/e2ee-worker", import.meta.url), { type: "module" });
+    return new Room({ e2ee: { keyProvider, worker } });
+  });
+  const [isE2EEEnabled, setIsE2EEEnabled] = useState(false);
   const [connected, setConnected] = useState(false);
   const [remoteParticipants, setRemoteParticipants] = useState<RemoteParticipant[]>([]);
   const [participants, setParticipants] = useState<MeetingParticipantInfo[]>([]);
@@ -114,12 +126,18 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
         }
       }
     }
+    function handleEncryptionStatusChanged(enabled: boolean, participant?: Participant) {
+      if (participant?.identity === room.localParticipant.identity) {
+        setIsE2EEEnabled(enabled);
+      }
+    }
     room.on(RoomEvent.ParticipantConnected, handleParticipantConnected);
     room.on(RoomEvent.ParticipantDisconnected, handleParticipantDisconnected);
     room.on(RoomEvent.TrackPublished, handleTrackPublished);
     room.on(RoomEvent.TrackUnpublished, handleTrackUnpublished);
     room.on(RoomEvent.LocalTrackPublished, handleTrackPublished);
     room.on(RoomEvent.LocalTrackUnpublished, handleTrackUnpublished);
+    room.on(RoomEvent.ParticipantEncryptionStatusChanged, handleEncryptionStatusChanged);
 
     async function setup() {
       try {
@@ -127,6 +145,18 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
         if (cancelled) return;
         setHourlyRate(joinResp.meeting.hourlyRate);
         setStartedAt(joinResp.meeting.startedAt);
+
+        // A shared passphrase derived from the meeting code — anyone who has the
+        // code can already join the meeting anyway, so this doesn't weaken the
+        // trust model, it just extends it to also encrypt media end-to-end.
+        if (isE2EESupported()) {
+          try {
+            await keyProvider.setKey(meetingCode);
+            await room.setE2EEEnabled(true);
+          } catch (e2eeErr) {
+            console.error("Could not enable end-to-end encryption:", e2eeErr);
+          }
+        }
 
         await room.connect(joinResp.livekitUrl, joinResp.livekitToken);
         if (cancelled) return;
@@ -265,6 +295,7 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
       room.off(RoomEvent.TrackUnpublished, handleTrackUnpublished);
       room.off(RoomEvent.LocalTrackPublished, handleTrackPublished);
       room.off(RoomEvent.LocalTrackUnpublished, handleTrackUnpublished);
+      room.off(RoomEvent.ParticipantEncryptionStatusChanged, handleEncryptionStatusChanged);
       socketRef.current?.disconnect();
       socketRef.current = null;
       setSocket(null);
@@ -476,6 +507,7 @@ export function useMeeting(meetingCode: string, accessToken: string | null, curr
     captionsEnabled,
     captionLanguage,
     captions,
+    isE2EEEnabled,
     socket,
     ydoc,
     audioContext,

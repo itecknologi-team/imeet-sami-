@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import * as api from "../services/api";
+import { useAuth } from "../hooks/useAuth";
 
 function formatDuration(seconds: number | null): string {
   if (seconds === null) return "";
@@ -15,11 +16,24 @@ function isTerminal(status: string | undefined): boolean {
 
 export function RecordingsPage() {
   const { meetingCode = "" } = useParams<{ meetingCode: string }>();
+  const { user, accessToken } = useAuth();
   const [recordings, setRecordings] = useState<api.Recording[]>([]);
+  const [isHost, setIsHost] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recap, setRecap] = useState<api.RecapResponse | null>(null);
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
   const pauseListenerRef = useRef<{ video: HTMLVideoElement; listener: () => void } | null>(null);
+
+  async function handleDelete(recordingId: string) {
+    if (!accessToken) return;
+    try {
+      await api.deleteRecording(accessToken, meetingCode, recordingId);
+      const res = await api.getRecordings(meetingCode);
+      setRecordings(res.recordings);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to delete recording");
+    }
+  }
 
   function seekTo(recordingId: string, start: number, end: number | null) {
     const video = videoRefs.current[recordingId];
@@ -60,6 +74,22 @@ export function RecordingsPage() {
       cancelled = true;
     };
   }, [meetingCode]);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    api
+      .getParticipants(meetingCode)
+      .then((res) => {
+        if (!cancelled) {
+          setIsHost(res.participants.find((p) => p.userId === user.id)?.role === "host");
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [meetingCode, user]);
 
   useEffect(() => {
     if (!recordings.some((r) => r.status === "completed")) return;
@@ -113,15 +143,34 @@ export function RecordingsPage() {
                   {recording.duration !== null && ` — ${formatDuration(recording.duration)}`}
                 </span>
               </div>
-              {recording.status === "completed" && recording.fileUrl ? (
-                <video
-                  ref={(el) => {
-                    videoRefs.current[recording.id] = el;
-                  }}
-                  src={recording.fileUrl}
-                  controls
-                  className="w-full rounded"
-                />
+              {recording.deletedAt ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  This recording has been deleted.
+                </p>
+              ) : recording.status === "completed" && recording.fileUrl ? (
+                <>
+                  <video
+                    ref={(el) => {
+                      videoRefs.current[recording.id] = el;
+                    }}
+                    src={recording.fileUrl}
+                    controls
+                    className="w-full rounded"
+                  />
+                  <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                    {recording.expiresAt && (
+                      <span>Expires on {new Date(recording.expiresAt).toLocaleDateString()}</span>
+                    )}
+                    {isHost && (
+                      <button
+                        onClick={() => handleDelete(recording.id)}
+                        className="text-red-600 hover:underline dark:text-red-400"
+                      >
+                        Delete now
+                      </button>
+                    )}
+                  </div>
+                </>
               ) : (
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   {recording.status === "recording" ? "Recording in progress..." : "Processing..."}

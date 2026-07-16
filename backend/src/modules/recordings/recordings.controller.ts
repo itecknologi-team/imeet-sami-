@@ -27,3 +27,16 @@ export async function listRecordingsHandler(req: Request, res: Response, next: N
     next(err);
   }
 }
+
+export async function deleteRecordingHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await recordingsService.deleteRecording(
+      req.params.meetingCode,
+      req.params.recordingId,
+      req.user!.id,
+    );
+    res.status(200).json(result);
+  } catch (err) {
+    next(err);
+  }
+}

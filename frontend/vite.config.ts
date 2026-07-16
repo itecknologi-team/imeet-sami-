@@ -8,4 +8,8 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  worker: {
+    // livekit-client's e2ee-worker ships as an ES module
+    format: 'es',
+  },
 })

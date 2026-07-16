@@ -1,0 +1,3 @@
+ALTER TABLE recordings
+  ADD COLUMN expires_at TIMESTAMPTZ,
+  ADD COLUMN deleted_at TIMESTAMPTZ;

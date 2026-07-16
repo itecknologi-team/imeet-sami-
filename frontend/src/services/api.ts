@@ -157,6 +157,8 @@ export interface Recording {
   duration: number | null;
   status: string;
   createdAt: string;
+  expiresAt: string | null;
+  deletedAt: string | null;
 }
 
 export async function startRecording(
@@ -178,6 +180,17 @@ export async function stopRecording(accessToken: string, meetingCode: string): P
 
 export async function getRecordings(meetingCode: string): Promise<{ recordings: Recording[] }> {
   return request<{ recordings: Recording[] }>(`/api/meetings/${meetingCode}/recordings`);
+}
+
+export async function deleteRecording(
+  accessToken: string,
+  meetingCode: string,
+  recordingId: string,
+): Promise<{ success: boolean }> {
+  return request(`/api/meetings/${meetingCode}/recordings/${recordingId}`, {
+    method: "DELETE",
+    headers: authHeader(accessToken),
+  });
 }
 
 export interface Highlight {

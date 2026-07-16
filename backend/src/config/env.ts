@@ -26,4 +26,6 @@ export const env = {
   s3Region: process.env.S3_REGION ?? "us-east-1",
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
+  recordingRetentionDays: parseInt(process.env.RECORDING_RETENTION_DAYS ?? "30", 10),
+  recordingCleanupIntervalMs: parseInt(process.env.RECORDING_CLEANUP_INTERVAL_MS ?? "3600000", 10),
 };

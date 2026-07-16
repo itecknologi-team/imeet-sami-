@@ -9,6 +9,7 @@ import { CostCounter } from "../components/meeting/CostCounter";
 import { ParticipantList } from "../components/meeting/ParticipantList";
 import { VideoTile } from "../components/meeting/VideoTile";
 import { VirtualOfficePanel } from "../components/meeting/VirtualOfficePanel";
+import { WatermarkOverlay } from "../components/meeting/WatermarkOverlay";
 import { WhiteboardPanel } from "../components/meeting/WhiteboardPanel";
 import { useAuth } from "../hooks/useAuth";
 import type { AvatarPosition } from "../hooks/useMeeting";
@@ -75,6 +76,7 @@ export function MeetingRoomPage() {
     captions,
     toggleCaptions,
     setCaptionLanguage,
+    isE2EEEnabled,
     socket,
     ydoc,
     audioContext,
@@ -152,6 +154,11 @@ export function MeetingRoomPage() {
           Meeting code: <span className="font-mono text-gray-100">{meetingCode}</span>
         </span>
         <CostCounter hourlyRate={hourlyRate} startedAt={startedAt} participantCount={participants.length} />
+        {isE2EEEnabled && (
+          <span className="rounded bg-gray-700 px-3 py-1 text-xs font-medium text-green-400">
+            🔒 End-to-end encrypted
+          </span>
+        )}
         <button
           onClick={handleCopyInviteLink}
           className="rounded bg-gray-700 px-3 py-1 text-xs font-medium text-white"
@@ -176,9 +183,12 @@ export function MeetingRoomPage() {
           </div>
           <div
             className={
-              activeView === "video" ? "flex flex-1 flex-col gap-2 overflow-y-auto p-4" : "hidden"
+              activeView === "video"
+                ? "relative flex flex-1 flex-col gap-2 overflow-y-auto p-4"
+                : "hidden"
             }
           >
+          {activeView === "video" && user && <WatermarkOverlay name={user.name} email={user.email} />}
           {screenShareParticipantIdentity && (
             <div className="flex-[3]">
               {isLocalScreenShare && (

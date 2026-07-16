@@ -16,6 +16,11 @@ router.get("/:meetingCode/participants", meetingsController.getParticipantsHandl
 router.post("/:meetingCode/recording/start", requireAuth, recordingsController.startRecordingHandler);
 router.post("/:meetingCode/recording/stop", requireAuth, recordingsController.stopRecordingHandler);
 router.get("/:meetingCode/recordings", recordingsController.listRecordingsHandler);
+router.delete(
+  "/:meetingCode/recordings/:recordingId",
+  requireAuth,
+  recordingsController.deleteRecordingHandler,
+);
 router.get("/:meetingCode/recap", transcriptionController.getRecapHandler);
 router.post(
   "/:meetingCode/caption-chunk",
