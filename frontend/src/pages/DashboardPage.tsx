@@ -2,11 +2,13 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import { useDyslexiaFont } from "../hooks/useDyslexiaFont";
 import * as api from "../services/api";
 
 export function DashboardPage() {
   const { user, accessToken, logout } = useAuth();
   const navigate = useNavigate();
+  const dyslexiaFont = useDyslexiaFont();
   const [title, setTitle] = useState("");
   const [hourlyRate, setHourlyRate] = useState("");
   const [joinCode, setJoinCode] = useState("");
@@ -48,12 +50,20 @@ export function DashboardPage() {
         <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
           Welcome, {user?.name}
         </h1>
-        <button
-          onClick={handleLogout}
-          className="rounded bg-gray-200 px-3 py-2 text-sm font-medium text-gray-800 dark:bg-gray-800 dark:text-gray-200"
-        >
-          Log out
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={dyslexiaFont.toggle}
+            className="rounded bg-gray-200 px-3 py-2 text-sm font-medium text-gray-800 dark:bg-gray-800 dark:text-gray-200"
+          >
+            Dyslexia Font: {dyslexiaFont.enabled ? "On" : "Off"}
+          </button>
+          <button
+            onClick={handleLogout}
+            className="rounded bg-gray-200 px-3 py-2 text-sm font-medium text-gray-800 dark:bg-gray-800 dark:text-gray-200"
+          >
+            Log out
+          </button>
+        </div>
       </div>
 
       {error && <p className="mt-4 text-sm text-red-600">{error}</p>}

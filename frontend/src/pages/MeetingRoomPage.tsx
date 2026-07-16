@@ -12,6 +12,7 @@ import { VirtualOfficePanel } from "../components/meeting/VirtualOfficePanel";
 import { WatermarkOverlay } from "../components/meeting/WatermarkOverlay";
 import { WhiteboardPanel } from "../components/meeting/WhiteboardPanel";
 import { useAuth } from "../hooks/useAuth";
+import { useDyslexiaFont } from "../hooks/useDyslexiaFont";
 import type { AvatarPosition } from "../hooks/useMeeting";
 import { useMeeting, VIRTUAL_OFFICE_DEFAULT_POSITION } from "../hooks/useMeeting";
 
@@ -48,6 +49,7 @@ export function MeetingRoomPage() {
     [user?.id, user?.name],
   );
   const [linkCopied, setLinkCopied] = useState(false);
+  const dyslexiaFont = useDyslexiaFont();
   const [activeView, setActiveView] = useState<ActiveView>("video");
   const {
     room,
@@ -159,6 +161,12 @@ export function MeetingRoomPage() {
             🔒 End-to-end encrypted
           </span>
         )}
+        <button
+          onClick={dyslexiaFont.toggle}
+          className="rounded bg-gray-700 px-3 py-1 text-xs font-medium text-white"
+        >
+          Dyslexia Font: {dyslexiaFont.enabled ? "On" : "Off"}
+        </button>
         <button
           onClick={handleCopyInviteLink}
           className="rounded bg-gray-700 px-3 py-1 text-xs font-medium text-white"
