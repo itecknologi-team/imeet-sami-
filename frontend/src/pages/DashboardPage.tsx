@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { useDyslexiaFont } from "../hooks/useDyslexiaFont";
 import * as api from "../services/api";
@@ -107,6 +107,16 @@ export function DashboardPage() {
             </button>
           </div>
         </form>
+
+        <div className="space-y-2">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Async Video Messages</h2>
+          <Link
+            to="/videos/mine"
+            className="inline-block rounded bg-gray-700 px-4 py-2 text-sm font-medium text-white"
+          >
+            My Videos
+          </Link>
+        </div>
       </div>
     </div>
   );

@@ -4,8 +4,11 @@ import { AuthProvider } from "./hooks/useAuth";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { MeetingRoomPage } from "./pages/MeetingRoomPage";
+import { MyVideosPage } from "./pages/MyVideosPage";
+import { RecordVideoPage } from "./pages/RecordVideoPage";
 import { RecordingsPage } from "./pages/RecordingsPage";
 import { SignupPage } from "./pages/SignupPage";
+import { WatchVideoPage } from "./pages/WatchVideoPage";
 
 function App() {
   return (
@@ -39,6 +42,23 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/videos/new"
+            element={
+              <ProtectedRoute>
+                <RecordVideoPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/videos/mine"
+            element={
+              <ProtectedRoute>
+                <MyVideosPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="/videos/:videoId" element={<WatchVideoPage />} />
         </Routes>
       </AuthProvider>
     </Router>

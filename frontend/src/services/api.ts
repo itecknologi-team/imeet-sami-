@@ -222,3 +222,35 @@ export async function uploadCaptionChunk(
     body: blob,
   });
 }
+
+export interface AsyncVideo {
+  id: string;
+  title: string;
+  fileUrl: string;
+  duration: number | null;
+  createdAt: string;
+}
+
+export async function uploadAsyncVideo(
+  accessToken: string,
+  title: string,
+  blob: Blob,
+  durationSeconds: number,
+): Promise<AsyncVideo> {
+  const params = new URLSearchParams({ title, duration: String(durationSeconds) });
+  return request<AsyncVideo>(`/api/videos?${params.toString()}`, {
+    method: "POST",
+    headers: { ...authHeader(accessToken), "Content-Type": "video/webm" },
+    body: blob,
+  });
+}
+
+export async function listMyVideos(accessToken: string): Promise<{ videos: AsyncVideo[] }> {
+  return request<{ videos: AsyncVideo[] }>("/api/videos/mine", {
+    headers: authHeader(accessToken),
+  });
+}
+
+export async function getAsyncVideo(videoId: string): Promise<AsyncVideo> {
+  return request<AsyncVideo>(`/api/videos/${videoId}`);
+}
