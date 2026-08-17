@@ -1,0 +1,42 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand-blue: #0a5ca8;
+  --brand-blue-dark: #084b8a;
+  --brand-cyan: #00a9ce;
+  --brand-teal: #00a19a;
+  --brand-green: #4caf3f;
+  --brand-olive: #c0be3a;
+  --brand-orange: #ef8f1c;
+  --danger: #e23b3b;
+
+  --page-bg: linear-gradient(135deg, #eef4f8 0%, #f7fafc 50%, #ffffff 100%);
+  --surface: #ffffff;
+  --border: #e6ebf0;
+  --text: #1e2a32;
+  --muted: #6b7a85;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Poppins", "Inter", system-ui, sans-serif;
+  color: var(--text);
+}
+
+.page-bg {
+  background: var(--page-bg);
+}
+
+.focus-ring {
+  outline: none;
+}
+.focus-ring:focus-visible {
+  outline: 2px solid var(--brand-blue);
+  outline-offset: 2px;
+}

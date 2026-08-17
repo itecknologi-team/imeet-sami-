@@ -1,4 +1,13 @@
-export const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+// Derived from whatever host actually loaded this page instead of a
+// hardcoded "localhost" — a device on the LAN loads the frontend via this
+// machine's LAN IP, and "localhost" in its browser would mean itself, not
+// this server. The protocol is derived too (not hardcoded to http) since the
+// backend now speaks https — a page loaded over https can't call out to a
+// plain http API (blocked as mixed content). VITE_API_URL still wins if
+// explicitly set (e.g. behind a reverse proxy or tunnel with its own
+// hostname).
+export const API_BASE_URL =
+  import.meta.env.VITE_API_URL ?? `${window.location.protocol}//${window.location.hostname}:4000`;
 
 export interface HealthResponse {
   status: "ok";
@@ -26,13 +35,14 @@ export interface AuthResponse {
 }
 
 export class ApiError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-    public body: unknown,
-  ) {
+  status: number;
+  body: unknown;
+
+  constructor(status: number, message: string, body: unknown) {
     super(message);
     this.name = "ApiError";
+    this.status = status;
+    this.body = body;
   }
 }
 
@@ -86,10 +96,12 @@ export interface CreateMeetingResponse {
   id: string;
   title: string;
   meetingCode: string;
-  hostId: string;
+  hostId: string | null;
   status: string;
   hourlyRate: number;
   priceCents: number | null;
+  scheduledAt: string | null;
+  durationMinutes: number | null;
 }
 
 export interface MeetingInfo {
@@ -102,6 +114,21 @@ export interface MeetingInfo {
   startedAt: string | null;
   totalCost: number | null;
   priceCents: number | null;
+  scheduledAt: string | null;
+  durationMinutes: number | null;
+}
+
+export interface MyMeeting {
+  id: string;
+  title: string;
+  meetingCode: string;
+  status: string;
+  hourlyRate: number;
+  startedAt: string | null;
+  endedAt: string | null;
+  scheduledAt: string | null;
+  durationMinutes: number | null;
+  createdAt: string;
 }
 
 export interface JoinMeetingResponse {
@@ -117,20 +144,44 @@ export interface Participant {
   joinedAt: string;
 }
 
+export interface GuestIdentity {
+  guestId: string;
+  guestName: string;
+}
+
 function authHeader(accessToken: string) {
   return { Authorization: `Bearer ${accessToken}` };
 }
 
 export async function createMeeting(
-  accessToken: string,
+  accessToken: string | null,
   title?: string,
   hourlyRate?: number,
   priceCents?: number,
+  guest?: GuestIdentity,
+  passcode?: string,
+  scheduledAt?: string,
+  durationMinutes?: number,
 ): Promise<CreateMeetingResponse> {
   return request<CreateMeetingResponse>("/api/meetings", {
     method: "POST",
+    headers: accessToken ? authHeader(accessToken) : {},
+    body: JSON.stringify({
+      title,
+      hourlyRate,
+      priceCents,
+      passcode,
+      guestId: guest?.guestId,
+      guestName: guest?.guestName,
+      scheduledAt,
+      durationMinutes,
+    }),
+  });
+}
+
+export async function getMyMeetings(accessToken: string): Promise<{ meetings: MyMeeting[] }> {
+  return request<{ meetings: MyMeeting[] }>("/api/meetings/mine", {
     headers: authHeader(accessToken),
-    body: JSON.stringify({ title, hourlyRate, priceCents }),
   });
 }
 
@@ -174,27 +225,39 @@ export async function getMeeting(meetingCode: string): Promise<MeetingInfo> {
   return request<MeetingInfo>(`/api/meetings/${meetingCode}`);
 }
 
-export async function joinMeeting(accessToken: string, meetingCode: string): Promise<JoinMeetingResponse> {
+export async function joinMeeting(
+  accessToken: string | null,
+  meetingCode: string,
+  guest?: GuestIdentity & { passcode?: string },
+): Promise<JoinMeetingResponse> {
   return request<JoinMeetingResponse>(`/api/meetings/${meetingCode}/join`, {
     method: "POST",
-    headers: authHeader(accessToken),
+    headers: accessToken ? authHeader(accessToken) : {},
+    body: JSON.stringify({ guestId: guest?.guestId, guestName: guest?.guestName, passcode: guest?.passcode }),
   });
 }
 
-export async function leaveMeeting(accessToken: string, meetingCode: string): Promise<{ success: boolean }> {
+export async function leaveMeeting(
+  accessToken: string | null,
+  meetingCode: string,
+  guestId?: string,
+): Promise<{ success: boolean }> {
   return request<{ success: boolean }>(`/api/meetings/${meetingCode}/leave`, {
     method: "POST",
-    headers: authHeader(accessToken),
+    headers: accessToken ? authHeader(accessToken) : {},
+    body: JSON.stringify({ guestId }),
   });
 }
 
 export async function endMeeting(
-  accessToken: string,
+  accessToken: string | null,
   meetingCode: string,
+  guestId?: string,
 ): Promise<{ success: boolean; status: string; totalCost: number }> {
   return request(`/api/meetings/${meetingCode}/end`, {
     method: "POST",
-    headers: authHeader(accessToken),
+    headers: accessToken ? authHeader(accessToken) : {},
+    body: JSON.stringify({ guestId }),
   });
 }
 

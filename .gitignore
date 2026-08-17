@@ -3,5 +3,9 @@ dist/
 .env
 *.log
 .DS_Store
+*.tsbuildinfo
 .claude/*
 !.claude/skills/
+# Locally-generated mkcert dev TLS certs (contains private keys) — see
+# backend/src/config/env.ts and frontend/vite.config.ts for how they're used.
+certs/

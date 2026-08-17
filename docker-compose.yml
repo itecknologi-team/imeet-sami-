@@ -19,15 +19,37 @@ services:
     image: livekit/livekit-server:latest
     command: --config /etc/livekit.yaml
     ports:
-      - "7880:7880"
-      - "7881:7881"
+      # No longer publishes 7880 externally as plain ws — the livekit-tls
+      # proxy below is the public entrypoint on 7885 and terminates TLS,
+      # since livekit-server itself has no cert_file/key_file option for its
+      # main signaling port (only for TURN-over-TLS).
+      - "7886:7881"
       - "50000-50020:50000-50020/udp"
     volumes:
       - ./livekit.yaml:/etc/livekit.yaml:ro
+      - ./certs:/etc/certs:ro
+    environment:
+      # So LiveKit's own outgoing webhook call (https://host.docker.internal:4000/...)
+      # trusts our locally-issued (mkcert) dev certificate.
+      SSL_CERT_FILE: /etc/certs/rootCA.pem
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
       - redis
+
+  livekit-tls:
+    image: caddy:2-alpine
+    # Terminates TLS on the public signaling port and forwards plain
+    # ws/http to livekit internally — browsers on an https page can't open
+    # a plain ws:// connection (blocked as mixed content), and livekit-server
+    # itself has no built-in TLS option for this port.
+    ports:
+      - "7885:7885"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/etc/certs:ro
+    depends_on:
+      - livekit
 
   minio:
     image: minio/minio:latest
@@ -40,6 +62,8 @@ services:
       - "9001:9001"
     volumes:
       - miniodata:/data
+      # Presence of public.crt/private.key here switches MinIO to TLS-only.
+      - ./certs/minio:/root/.minio/certs:ro
 
   minio-init:
     image: minio/mc:latest
@@ -47,19 +71,31 @@ services:
       - minio
     entrypoint: >
       /bin/sh -c "
-      until mc alias set local http://minio:9000 minioadmin minioadmin123; do sleep 1; done;
-      mc mb -p local/recordings;
-      mc anonymous set download local/recordings;
+      until mc alias set --insecure local https://minio:9000 minioadmin minioadmin123; do sleep 1; done;
+      mc mb --insecure -p local/recordings;
+      mc anonymous set --insecure download local/recordings;
       exit 0;
       "
 
   egress:
     image: livekit/egress:latest
-    network_mode: host
+    # Egress launches a real headless Chrome to composite the room; Docker's
+    # 64MB default /dev/shm is nowhere near enough and makes Chrome fail to
+    # launch outright (LiveKit's own docs call for at least this much).
+    shm_size: "2gb"
+    # Chrome's sandbox needs this capability — without it, every room
+    # composite request fails with "chrome failed to start" (LiveKit's own
+    # deployment docs call this out as required).
+    cap_add:
+      - SYS_ADMIN
     volumes:
       - ./egress.yaml:/etc/egress.yaml:ro
+      - ./certs:/etc/certs:ro
     environment:
       EGRESS_CONFIG_FILE: /etc/egress.yaml
+      # So egress's outgoing connections to LiveKit (wss) and MinIO (https)
+      # trust our locally-issued (mkcert) dev certificate.
+      SSL_CERT_FILE: /etc/certs/rootCA.pem
     depends_on:
       - livekit
       - redis

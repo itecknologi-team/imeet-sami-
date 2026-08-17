@@ -3,6 +3,7 @@ import { DeleteObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { pool } from "../../config/db";
 import { env } from "../../config/env";
 import { AppError } from "../../shared/errors";
+import { getIO } from "../../realtime/socket";
 
 const egressClient = new EgressClient(
   env.livekitUrl.replace(/^ws/, "http"),
@@ -86,7 +87,9 @@ export async function startRecording(meetingCode: string, userId: string) {
         accessKey: env.s3AccessKey,
         secret: env.s3SecretKey,
         region: env.s3Region,
-        endpoint: env.s3Endpoint,
+        // Sent to the egress container, which reaches MinIO over the
+        // docker-compose network — not the host-facing env.s3Endpoint.
+        endpoint: env.s3EgressEndpoint,
         bucket: env.s3Bucket,
         forcePathStyle: true,
       }),
@@ -110,7 +113,12 @@ export async function startRecording(meetingCode: string, userId: string) {
     [meeting.id, info.egressId, env.recordingRetentionDays],
   );
 
-  return { id: rows[0].id, egressId: info.egressId, status: "recording" };
+  // Broadcast so every participant's UI (not just the host who clicked
+  // start) shows the recording indicator and timer.
+  const startedAt = new Date().toISOString();
+  getIO().to(meetingCode).emit("recording-started", { startedAt });
+
+  return { id: rows[0].id, egressId: info.egressId, status: "recording", startedAt };
 }
 
 export async function stopRecording(meetingCode: string, userId: string) {
@@ -137,6 +145,7 @@ export async function stopRecording(meetingCode: string, userId: string) {
     "UPDATE recordings SET status = 'processing' WHERE id = $1 AND status = 'recording'",
     [recording.id],
   );
+  getIO().to(meetingCode).emit("recording-stopped", {});
 
   return { success: true };
 }
@@ -220,9 +229,18 @@ export async function completeRecording(
   fileUrl: string | null,
   durationSeconds: number | null,
 ) {
-  const { rows } = await pool.query<{ id: string }>(
-    "UPDATE recordings SET status = $1, file_url = $2, duration = $3 WHERE egress_id = $4 RETURNING id",
+  const { rows } = await pool.query<{ id: string; meeting_code: string }>(
+    `UPDATE recordings r SET status = $1, file_url = $2, duration = $3
+     FROM meetings m
+     WHERE r.egress_id = $4 AND r.meeting_id = m.id
+     RETURNING r.id, m.meeting_code`,
     [status, fileUrl, durationSeconds, egressId],
   );
-  return rows[0] ?? null;
+  const recording = rows[0] ?? null;
+  if (recording) {
+    // Covers egress ending on its own (crash, timeout) without an explicit
+    // stop click — every client still needs to hear the recording is over.
+    getIO().to(recording.meeting_code).emit("recording-stopped", {});
+  }
+  return recording;
 }

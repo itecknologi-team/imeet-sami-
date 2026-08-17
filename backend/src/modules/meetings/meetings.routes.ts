@@ -1,5 +1,5 @@
 import express, { Router } from "express";
-import { requireAuth } from "../auth/auth.middleware";
+import { optionalAuth, requireAuth } from "../auth/auth.middleware";
 import * as meetingsController from "./meetings.controller";
 import * as recordingsController from "../recordings/recordings.controller";
 import * as transcriptionController from "../transcription/transcription.controller";
@@ -8,11 +8,16 @@ import * as paymentsController from "../payments/payments.controller";
 
 const router = Router();
 
-router.post("/", requireAuth, meetingsController.createMeetingHandler);
+// Instant meetings can be created/joined/left as a guest (no account) — these
+// use optionalAuth so signed-in users still get their real identity attached.
+router.post("/", optionalAuth, meetingsController.createMeetingHandler);
+// Must be registered before the bare "/:meetingCode" route below, or Express
+// would match "mine" as a meeting code instead of routing here.
+router.get("/mine", requireAuth, meetingsController.listMyMeetingsHandler);
 router.get("/:meetingCode", meetingsController.getMeetingHandler);
-router.post("/:meetingCode/join", requireAuth, meetingsController.joinMeetingHandler);
-router.post("/:meetingCode/leave", requireAuth, meetingsController.leaveMeetingHandler);
-router.post("/:meetingCode/end", requireAuth, meetingsController.endMeetingHandler);
+router.post("/:meetingCode/join", optionalAuth, meetingsController.joinMeetingHandler);
+router.post("/:meetingCode/leave", optionalAuth, meetingsController.leaveMeetingHandler);
+router.post("/:meetingCode/end", optionalAuth, meetingsController.endMeetingHandler);
 router.get("/:meetingCode/participants", meetingsController.getParticipantsHandler);
 router.post("/:meetingCode/recording/start", requireAuth, recordingsController.startRecordingHandler);
 router.post("/:meetingCode/recording/stop", requireAuth, recordingsController.stopRecordingHandler);

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { CompanyLogo } from "../components/brand/CompanyLogo";
 import { useAuth } from "../hooks/useAuth";
 
 export function SignupPage() {
@@ -27,49 +28,57 @@ export function SignupPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-white dark:bg-gray-900">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 p-8">
-        <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100">Sign up</h1>
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        <input
-          type="text"
-          placeholder="Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-          className="w-full rounded border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-        />
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-          className="w-full rounded border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-        />
-        <input
-          type="password"
-          placeholder="Password (min 8 characters)"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          minLength={8}
-          className="w-full rounded border border-gray-300 px-3 py-2 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
-        />
-        <button
-          type="submit"
-          disabled={submitting}
-          className="w-full rounded bg-blue-600 px-3 py-2 font-medium text-white disabled:opacity-50"
+    <div className="page-bg flex min-h-screen flex-col">
+      <div className="px-6 pt-6 sm:px-12">
+        <CompanyLogo />
+      </div>
+      <div className="flex flex-1 items-center justify-center px-6">
+        <form
+          onSubmit={handleSubmit}
+          className="w-full max-w-sm space-y-4 rounded-2xl border border-brand-border bg-brand-surface p-8 shadow-soft"
         >
-          {submitting ? "Signing up..." : "Sign up"}
-        </button>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          Already have an account?{" "}
-          <Link to="/login" className="text-blue-600">
-            Log in
-          </Link>
-        </p>
-      </form>
+          <h1 className="text-xl font-semibold text-brand-text">Sign up</h1>
+          {error && <p className="text-sm text-brand-danger">{error}</p>}
+          <input
+            type="text"
+            placeholder="Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            className="w-full rounded-[10px] border border-brand-border px-4 py-3 text-sm placeholder:text-brand-muted"
+          />
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            className="w-full rounded-[10px] border border-brand-border px-4 py-3 text-sm placeholder:text-brand-muted"
+          />
+          <input
+            type="password"
+            placeholder="Password (min 8 characters)"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            minLength={8}
+            className="w-full rounded-[10px] border border-brand-border px-4 py-3 text-sm placeholder:text-brand-muted"
+          />
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full rounded-[10px] bg-brand-blue py-3 text-sm font-bold text-white transition-colors hover:bg-brand-blue-dark disabled:opacity-50"
+          >
+            {submitting ? "Signing up..." : "Sign up"}
+          </button>
+          <p className="text-sm text-brand-muted">
+            Already have an account?{" "}
+            <Link to="/login" className="font-medium text-brand-blue hover:underline">
+              Log in
+            </Link>
+          </p>
+        </form>
+      </div>
     </div>
   );
 }

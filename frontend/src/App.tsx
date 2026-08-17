@@ -1,8 +1,10 @@
-import { Navigate, Route, BrowserRouter as Router, Routes } from "react-router-dom";
+import { Route, BrowserRouter as Router, Routes } from "react-router-dom";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { AuthProvider } from "./hooks/useAuth";
 import { DashboardPage } from "./pages/DashboardPage";
+import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
+import { MeetingReadyPage } from "./pages/MeetingReadyPage";
 import { MeetingRoomPage } from "./pages/MeetingRoomPage";
 import { MyVideosPage } from "./pages/MyVideosPage";
 import { RecordVideoPage } from "./pages/RecordVideoPage";
@@ -15,7 +17,7 @@ function App() {
     <Router>
       <AuthProvider>
         <Routes>
-          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route
@@ -26,14 +28,9 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/meeting/:meetingCode"
-            element={
-              <ProtectedRoute>
-                <MeetingRoomPage />
-              </ProtectedRoute>
-            }
-          />
+          {/* Guests can join/host without an account — no ProtectedRoute here. */}
+          <Route path="/meeting/:meetingCode/ready" element={<MeetingReadyPage />} />
+          <Route path="/meeting/:meetingCode" element={<MeetingRoomPage />} />
           <Route
             path="/meeting/:meetingCode/recordings"
             element={

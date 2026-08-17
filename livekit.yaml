@@ -4,7 +4,7 @@ rtc:
   port_range_start: 50000
   port_range_end: 50020
   use_external_ip: false
-  node_ip: 127.0.0.1
+  node_ip: 192.168.21.174
 keys:
   devkey: 54ff5680291ef292eed976456cbcb409bc59e4f46ded592ba33f2c5a0eafdd19
 redis:
@@ -12,4 +12,4 @@ redis:
 webhook:
   api_key: devkey
   urls:
-    - http://host.docker.internal:4000/api/webhooks/livekit
+    - https://host.docker.internal:4000/api/webhooks/livekit

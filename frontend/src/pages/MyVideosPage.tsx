@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
+import { copyToClipboard } from "../lib/clipboard";
 import * as api from "../services/api";
 
 function formatDuration(seconds: number | null): string {
@@ -34,7 +35,7 @@ export function MyVideosPage() {
 
   async function handleCopyLink(videoId: string) {
     const link = `${window.location.origin}/videos/${videoId}`;
-    await navigator.clipboard.writeText(link);
+    await copyToClipboard(link);
     setCopiedId(videoId);
     setTimeout(() => setCopiedId((prev) => (prev === videoId ? null : prev)), 2000);
   }

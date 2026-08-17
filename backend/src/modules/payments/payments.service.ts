@@ -15,7 +15,7 @@ function requireStripe(): Stripe {
 interface MeetingRow {
   id: string;
   price_cents: number | null;
-  host_id: string;
+  host_id: string | null;
 }
 
 async function findMeetingByCode(meetingCode: string): Promise<MeetingRow> {

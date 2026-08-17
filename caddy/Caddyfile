@@ -1,0 +1,8 @@
+{
+	admin off
+}
+
+:7885 {
+	tls /etc/certs/imeet.pem /etc/certs/imeet-key.pem
+	reverse_proxy livekit:7880
+}

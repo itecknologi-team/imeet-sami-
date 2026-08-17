@@ -2,6 +2,206 @@
 @import "@fontsource/opendyslexic/400.css";
 @import "@fontsource/opendyslexic/700.css";
 
+@theme {
+  --color-brand-blue: #0a5ca8;
+  --color-brand-blue-dark: #084b8a;
+  --color-brand-cyan: #00a9ce;
+  --color-brand-teal: #00a19a;
+  --color-brand-green: #4caf3f;
+  --color-brand-olive: #c0be3a;
+  --color-brand-orange: #ef8f1c;
+  --color-brand-danger: #e23b3b;
+
+  --color-brand-surface: #ffffff;
+  --color-brand-border: #e6ebf0;
+  --color-brand-text: #1e2a32;
+  --color-brand-muted: #6b7a85;
+}
+
+.page-bg {
+  background: linear-gradient(135deg, #eef4f8 0%, #f7fafc 50%, #ffffff 100%);
+}
+
+.shadow-soft {
+  box-shadow: 0 4px 24px rgba(16, 42, 67, 0.06);
+}
+
 body.dyslexia-font {
   font-family: "OpenDyslexic", sans-serif;
+}
+
+@keyframes avatar-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.animate-avatar-float {
+  animation: avatar-float 3s ease-in-out infinite;
+}
+
+@keyframes reaction-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(0) translateX(var(--reaction-x, 0)) scale(0.6);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(-10px) translateX(var(--reaction-x, 0)) scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-170px) translateX(var(--reaction-x, 0)) scale(1);
+  }
+}
+
+.animate-reaction-rise {
+  animation: reaction-rise 3s ease-out forwards;
+}
+
+/* ---- Adjust View / meeting layout design tokens ----
+   Single source of truth for the layout system's gaps, radii, transition
+   durations and accent/glow colors, so none of layout/*.tsx hardcode magic
+   numbers. */
+:root {
+  --meeting-gap: 12px;
+  --meeting-radius: 12px;
+  --meeting-radius-lg: 16px;
+  --meeting-transition-layout: 250ms;
+  --meeting-transition-speaker: 300ms;
+  --meeting-transition-fade: 500ms;
+  --meeting-accent: var(--color-brand-blue);
+  --meeting-speaking-glow: rgba(10, 92, 168, 0.55);
+  --meeting-pill-bg: rgba(15, 23, 32, 0.55);
+}
+
+.meeting-layout-transition {
+  transition:
+    opacity var(--meeting-transition-layout) ease-in-out,
+    transform var(--meeting-transition-layout) ease-in-out;
+}
+
+@keyframes meeting-stage-crossfade {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.meeting-stage-enter {
+  animation: meeting-stage-crossfade var(--meeting-transition-speaker) ease-in-out;
+}
+
+/* Speaking-glow ring: lives on a wrapper with no overflow clipping (a sibling
+   ::after, not a child), so the glow can extend past the video tile's own
+   rounded+clipped corners. Driven by the .is-speaking class only — no
+   per-frame JS. Opacity (not the box-shadow itself) is what's animated/
+   transitioned, so turning .is-speaking on or off both animate smoothly:
+   a keyframe pulses opacity while active, and the plain `transition` takes
+   over to fade it out over --meeting-transition-fade once the class is
+   removed (an element's transition still applies when an animation on the
+   same property is removed). */
+.tile-glow {
+  position: relative;
+}
+
+.tile-glow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  /* Layered: a soft (not hard-edged) ring, a mid falloff, then a wide soft
+     halo — reads as a glow instead of a stark solid line. */
+  box-shadow:
+    0 0 0 1.5px rgba(10, 92, 168, 0.7),
+    0 0 0 5px var(--meeting-speaking-glow),
+    0 0 26px 6px var(--meeting-speaking-glow);
+  opacity: 0;
+  transition: opacity var(--meeting-transition-fade) ease-out;
+}
+
+.tile-glow.is-speaking::after {
+  animation: meeting-speaking-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes meeting-speaking-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tile-glow.is-speaking::after {
+    animation: none;
+    opacity: 1;
+    transition: none;
+  }
+}
+
+/* Expand/fullscreen button on the main-stage tile: fades in on hover for
+   pointer devices, always visible on touch (no hover capability) — matches
+   `Expand icon ... appears on hover, always visible on touch devices`. */
+.stage-expand-btn {
+  opacity: 0;
+  transition: opacity 150ms ease-in-out;
+}
+
+.group:hover .stage-expand-btn,
+.group:focus-within .stage-expand-btn {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .stage-expand-btn {
+    opacity: 1;
+  }
+}
+
+/* Hidden-scrollbar momentum-scroll strip, used by Filmstrip/Sidebar. */
+.meeting-scroll-strip {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.meeting-scroll-strip::-webkit-scrollbar {
+  display: none;
+}
+
+/* Small 3-bar audio-level indicator — the non-colour cue next to a speaking
+   participant's name pill, so the "who's speaking" signal isn't glow-colour
+   alone. */
+@keyframes meeting-audio-bar {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.audio-bar {
+  animation: meeting-audio-bar 0.9s ease-in-out infinite;
+  transform-origin: bottom;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .audio-bar {
+    animation: none;
+    transform: scaleY(0.8);
+  }
 }

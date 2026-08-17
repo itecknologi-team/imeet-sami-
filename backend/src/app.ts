@@ -4,13 +4,18 @@ import authRoutes from "./modules/auth/auth.routes";
 import asyncVideosRoutes from "./modules/asyncVideos/asyncVideos.routes";
 import meetingsRoutes from "./modules/meetings/meetings.routes";
 import webhooksRoutes from "./modules/recordings/webhooks.routes";
+import { env } from "./config/env";
 import { AppError, PaymentRequiredError } from "./shared/errors";
 import { HealthResponse } from "./shared/types";
 
 export function createApp(): Application {
   const app = express();
 
-  app.use(cors());
+  // In development, reflect whatever origin made the request (`true`) so the
+  // LAN-IP flow — testing from a phone/other device on the network — keeps
+  // working without hardcoding an IP. Production has no such need and must
+  // list its real origin(s) explicitly (enforced in env.ts at startup).
+  app.use(cors({ origin: env.nodeEnv === "production" ? env.allowedOrigins : true }));
   app.use(express.json());
 
   app.get("/api/health", (_req, res) => {

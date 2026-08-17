@@ -51,12 +51,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function signup(name: string, email: string, password: string) {
     const auth = await api.signup(name, email, password);
-    storeSession(auth, { ...auth.user, avatarUrl: null });
+    storeSession(auth, { ...auth.user, avatarUrl: null, crmWebhookUrl: null });
   }
 
   async function login(email: string, password: string) {
     const auth = await api.login(email, password);
-    storeSession(auth, { ...auth.user, avatarUrl: null });
+    storeSession(auth, { ...auth.user, avatarUrl: null, crmWebhookUrl: null });
   }
 
   async function logout() {

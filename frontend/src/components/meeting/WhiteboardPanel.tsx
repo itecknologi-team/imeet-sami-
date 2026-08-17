@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, MutableRefObject } from "react";
 import type { Socket } from "socket.io-client";
 import type { WhiteboardPoint, WhiteboardStroke } from "../../hooks/useMeeting";
+import { generateId } from "../../lib/uuid";
 
 const COLORS = ["#f8fafc", "#ef4444", "#3b82f6", "#22c55e", "#eab308"];
 const CANVAS_WIDTH = 1600;
@@ -93,7 +94,7 @@ export function WhiteboardPanel({ socket, meetingCode, historyRef }: WhiteboardP
   function handlePointerDown(e: ReactPointerEvent<HTMLCanvasElement>) {
     if (!socket) return;
     const point = getPoint(e);
-    const strokeId = crypto.randomUUID();
+    const strokeId = generateId();
     drawingRef.current = { strokeId, lastPoint: point };
     historyRef.current.push({ id: strokeId, color, points: [point] });
     socket.emit("whiteboard-stroke-start", { meetingCode, strokeId, color, point });

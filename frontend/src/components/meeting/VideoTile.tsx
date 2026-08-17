@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { Hand, MicOff, Pin } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import {
   LocalParticipant,
   ParticipantEvent,
@@ -7,6 +8,8 @@ import {
   RemoteTrackPublication,
   Track,
 } from "livekit-client";
+import type { TrackPublication } from "livekit-client";
+import { AvatarPlaceholder } from "./AvatarPlaceholder";
 
 interface VideoTileProps {
   participant: LocalParticipant | RemoteParticipant;
@@ -16,6 +19,12 @@ interface VideoTileProps {
   audioContext?: AudioContext;
   gain?: number;
   pan?: number;
+  isHandRaised?: boolean;
+  isPinned?: boolean;
+}
+
+function isPublicationLive(pub: TrackPublication | undefined): boolean {
+  return Boolean(pub?.track) && !pub?.isMuted;
 }
 
 export function VideoTile({
@@ -26,12 +35,18 @@ export function VideoTile({
   audioContext,
   gain = 1,
   pan = 0,
+  isHandRaised = false,
+  isPinned = false,
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
   const pannerNodeRef = useRef<StereoPannerNode | null>(null);
   const audioGraphCreatedRef = useRef(false);
+  const [hasVideo, setHasVideo] = useState(() => isPublicationLive(participant.getTrackPublication(videoSource)));
+  const [hasAudio, setHasAudio] = useState(() =>
+    isPublicationLive(participant.getTrackPublication(Track.Source.Microphone)),
+  );
 
   useEffect(() => {
     const video = videoRef.current;
@@ -73,6 +88,34 @@ export function VideoTile({
     };
   }, [participant, isLocal, videoSource]);
 
+  // Tracked separately from the attach/detach effect above — this drives
+  // the "camera is off" avatar placeholder and the "mic is muted" badge,
+  // which need to reflect the live on/off state, not just whether a track
+  // element is attached.
+  useEffect(() => {
+    function refresh() {
+      setHasVideo(isPublicationLive(participant.getTrackPublication(videoSource)));
+      setHasAudio(isPublicationLive(participant.getTrackPublication(Track.Source.Microphone)));
+    }
+    refresh();
+
+    participant.on(ParticipantEvent.TrackSubscribed, refresh);
+    participant.on(ParticipantEvent.TrackUnsubscribed, refresh);
+    participant.on(ParticipantEvent.TrackMuted, refresh);
+    participant.on(ParticipantEvent.TrackUnmuted, refresh);
+    participant.on(ParticipantEvent.LocalTrackPublished, refresh);
+    participant.on(ParticipantEvent.LocalTrackUnpublished, refresh);
+
+    return () => {
+      participant.off(ParticipantEvent.TrackSubscribed, refresh);
+      participant.off(ParticipantEvent.TrackUnsubscribed, refresh);
+      participant.off(ParticipantEvent.TrackMuted, refresh);
+      participant.off(ParticipantEvent.TrackUnmuted, refresh);
+      participant.off(ParticipantEvent.LocalTrackPublished, refresh);
+      participant.off(ParticipantEvent.LocalTrackUnpublished, refresh);
+    };
+  }, [participant, videoSource]);
+
   useEffect(() => {
     if (isLocal || !audioContext || !audioRef.current || audioGraphCreatedRef.current) return;
     // An HTMLMediaElement can only ever be routed into a Web Audio graph once
@@ -102,10 +145,47 @@ export function VideoTile({
   }, [gain, pan]);
 
   return (
-    <div className="relative aspect-video overflow-hidden rounded bg-gray-800">
-      <video ref={videoRef} autoPlay playsInline muted={isLocal} className="h-full w-full object-cover" />
+    <div className="relative h-full w-full overflow-hidden rounded-xl bg-gray-800">
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted={isLocal}
+        data-video-tile={isLocal ? "local" : "remote"}
+        className={`h-full w-full object-cover ${isLocal && videoSource === Track.Source.Camera ? "-scale-x-100" : ""} ${
+          hasVideo ? "" : "hidden"
+        }`}
+      />
+      {!hasVideo && <AvatarPlaceholder />}
       {!isLocal && <audio ref={audioRef} autoPlay />}
-      <span className="absolute bottom-1 left-1 rounded bg-black/50 px-2 py-0.5 text-xs text-white">
+      {isPinned && (
+        <span
+          className="absolute left-2.5 top-2.5 flex h-7 w-7 items-center justify-center rounded-full bg-brand-blue text-white shadow-soft"
+          aria-label={`${name} is pinned`}
+          title="Pinned"
+        >
+          <Pin className="h-3.5 w-3.5" />
+        </span>
+      )}
+      {isHandRaised && videoSource === Track.Source.Camera && (
+        <span
+          className="animate-avatar-float absolute right-2.5 top-2.5 flex h-7 w-7 items-center justify-center rounded-full bg-brand-orange text-white shadow-soft"
+          aria-label={`${name} raised their hand`}
+          title="Hand raised"
+        >
+          <Hand className="h-3.5 w-3.5" />
+        </span>
+      )}
+      {!hasAudio && videoSource === Track.Source.Camera && (
+        <span
+          className="absolute bottom-2.5 right-2.5 flex h-7 w-7 items-center justify-center rounded-full bg-brand-danger text-white"
+          aria-label={`${name} is muted`}
+          title="Muted"
+        >
+          <MicOff className="h-3.5 w-3.5" />
+        </span>
+      )}
+      <span className="absolute bottom-2.5 left-2.5 rounded bg-black/50 px-2 py-0.5 text-xs text-white">
         {name}
       </span>
     </div>

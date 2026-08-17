@@ -14,7 +14,7 @@ export function CostCounter({ hourlyRate, startedAt, participantCount }: CostCou
     return () => clearInterval(interval);
   }, []);
 
-  if (!startedAt) {
+  if (!startedAt || !hourlyRate) {
     return null;
   }
 
@@ -22,9 +22,9 @@ export function CostCounter({ hourlyRate, startedAt, participantCount }: CostCou
   const cost = hourlyRate * participantCount * elapsedHours;
 
   return (
-    <span className="font-mono text-sm text-green-400">
+    <span className="font-mono text-sm text-brand-green">
       ${cost.toFixed(2)}
-      <span className="ml-1 text-xs text-gray-500">
+      <span className="ml-1 text-xs text-brand-muted">
         (${hourlyRate}/hr × {participantCount})
       </span>
     </span>
