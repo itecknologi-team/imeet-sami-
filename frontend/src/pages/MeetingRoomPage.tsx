@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { Track } from "livekit-client";
 import { Check, Link2, Users, X } from "lucide-react";
@@ -6,7 +6,13 @@ import { Wordmark } from "../components/brand/Wordmark";
 import { AdjustViewPanel } from "../components/meeting/AdjustViewPanel";
 import { CaptionsOverlay } from "../components/meeting/CaptionsOverlay";
 import { ChatPanel } from "../components/meeting/ChatPanel";
-import { CodeEditorPanel } from "../components/meeting/CodeEditorPanel";
+// Monaco is by far the largest thing this app bundles (~2MB), and the shared
+// code editor is only ever shown when the host switches the room to it. Loading
+// it eagerly made every participant download it before the meeting room could
+// render at all, so it's split into its own chunk fetched on first use.
+const CodeEditorPanel = lazy(() =>
+  import("../components/meeting/CodeEditorPanel").then((m) => ({ default: m.CodeEditorPanel })),
+);
 import { ConnectionQualityIcon } from "../components/meeting/ConnectionQualityIcon";
 import { Controls } from "../components/meeting/Controls";
 import type { SidePanel } from "../components/meeting/Controls";
@@ -373,7 +379,15 @@ export function MeetingRoomPage() {
           )}
           {activeView === "code" && (
             <div className="flex-1 overflow-hidden">
-              <CodeEditorPanel ydoc={ydoc} />
+              <Suspense
+                fallback={
+                  <div className="flex h-full items-center justify-center text-sm text-slate-400">
+                    Loading editor…
+                  </div>
+                }
+              >
+                <CodeEditorPanel ydoc={ydoc} />
+              </Suspense>
             </div>
           )}
           {activeView === "virtual-office" && (

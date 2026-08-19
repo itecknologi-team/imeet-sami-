@@ -1,0 +1,108 @@
+# Add this site block to the existing Caddyfile on 192.168.20.141 (the one
+# already fronting the other imeet deployment), then reload Caddy. It does not
+# touch or conflict with any existing site block — Caddy keys sites by hostname.
+#
+# Route order matters here: Caddy evaluates `handle`/`handle_path` blocks in the
+# order written, and the SPA catch-all must come last or it would swallow the
+# API and media routes.
+#
+# ---------------------------------------------------------------------------
+# FIRST: which Caddy is this? Run on the server —
+#
+#   docker ps --format '{{.Names}}\t{{.Image}}' | grep -i caddy
+#
+# Nothing printed  -> Caddy is a host service. Use this file as written.
+# A container listed -> Caddy is containerized. The 127.0.0.1 upstreams below
+#   will NOT work: inside a container, 127.0.0.1 is that container itself, and
+#   the stack's ports are published on the *host* loopback. Attach Caddy to the
+#   stack's network and use service names instead:
+#
+#     docker network connect imeet-sami-net <caddy-container-name>
+#
+#   then swap every upstream in this file:
+#     127.0.0.1:4100  ->  backend:4000
+#     127.0.0.1:8081  ->  frontend:8080
+#     127.0.0.1:7890  ->  livekit:7880
+#     127.0.0.1:9010  ->  minio:9000
+#
+#   (Re-run the `network connect` after the Caddy container is recreated, or
+#   add the network to Caddy's own compose file to make it permanent.)
+# ---------------------------------------------------------------------------
+
+imeet.itecknologi.com {
+	# Caddy provisions and renews the certificate automatically. This requires
+	# ports 80 and 443 on this host to be reachable from the internet for the
+	# ACME challenge, and imeet.itecknologi.com to resolve here.
+	encode zstd gzip
+
+	log {
+		output file /var/log/caddy/imeet-sami.log {
+			roll_size 50MiB
+			roll_keep 10
+		}
+	}
+
+	# Security headers for the app origin. The API sets its own via helmet;
+	# these cover the HTML/JS the browser loads.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# Camera/mic/screen-share are the app's core function, so they're
+		# allowed for this origin and denied to any embedded third party.
+		Permissions-Policy "camera=(self), microphone=(self), display-capture=(self), geolocation=()"
+		-Server
+	}
+
+	# ---- REST API -----------------------------------------------------------
+	handle /api/* {
+		reverse_proxy 127.0.0.1:4100
+	}
+
+	# ---- Socket.IO ----------------------------------------------------------
+	# Websocket upgrades need no special directive in Caddy v2 — it proxies
+	# them transparently. The long timeouts keep an idle meeting's control
+	# channel from being cut mid-meeting.
+	handle /socket.io/* {
+		reverse_proxy 127.0.0.1:4100 {
+			transport http {
+				read_timeout 24h
+				write_timeout 24h
+			}
+		}
+	}
+
+	# ---- LiveKit signaling --------------------------------------------------
+	# handle_path strips the /livekit prefix, so /livekit/rtc arrives at
+	# LiveKit as /rtc, which is the path livekit-client actually requests
+	# (it appends /rtc to LIVEKIT_PUBLIC_URL itself).
+	#
+	# Media does NOT flow through here — it goes directly to this host over
+	# UDP 50100-50199 (or TCP 7882 as a fallback), which must be open in the
+	# firewall / forwarded through NAT.
+	handle_path /livekit/* {
+		reverse_proxy 127.0.0.1:7890 {
+			transport http {
+				read_timeout 24h
+				write_timeout 24h
+			}
+		}
+	}
+
+	# ---- Recording / video objects -----------------------------------------
+	# Proxied WITHOUT rewriting the path: the backend hands out presigned
+	# (SigV4) URLs signed over this exact host + path, so altering either
+	# invalidates the signature and MinIO returns 403.
+	#
+	# Keep this path in sync with S3_BUCKET in .env.
+	handle /imeet-media/* {
+		reverse_proxy 127.0.0.1:9010
+	}
+
+	# ---- SPA ----------------------------------------------------------------
+	# Catch-all, must stay last. The frontend container serves index.html for
+	# unknown paths so client-side routing works.
+	handle {
+		reverse_proxy 127.0.0.1:8081
+	}
+}

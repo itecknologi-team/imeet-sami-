@@ -1,0 +1,256 @@
+# Production stack for imeet.itecknologi.com on 192.168.20.141.
+#
+# Deliberate differences from the dev docker-compose.yml at the repo root:
+#
+#  * No secret is written in this file. Everything sensitive comes from a
+#    sibling `.env` (see deploy/.env.production.example), which is never
+#    committed. The dev compose hardcodes postgres/minio/livekit credentials.
+#  * Postgres and Redis publish NO host ports. In dev they're on 5442/6389 so
+#    you can psql into them; exposing a database to the network in production
+#    is exactly the sort of thing that gets found by a scanner.
+#  * Everything the reverse proxy needs is published on 127.0.0.1 only, so the
+#    single public entrypoint is Caddy (see deploy/Caddyfile.snippet). The two
+#    exceptions are LiveKit's media ports, which must be reachable directly by
+#    participants' browsers.
+#  * Ports are offset from the other imeet deployment already on this host
+#    (8081/4100/7890/9010, UDP 50100-50199) so the two stacks coexist.
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+
+name: imeet-sami
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Gives `depends_on: condition: service_healthy` something real to wait
+    # for — without it the backend races the database on every cold start.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    # Persist to disk so an in-flight LiveKit room registry survives a restart.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    image: imeet-sami-backend:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      # One proxy hop (Caddy) in front of us — see app.ts.
+      TRUST_PROXY_HOPS: "1"
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      ALLOWED_ORIGINS: ${PUBLIC_ORIGIN}
+      # Internal address for the server SDK (room admin + egress control)...
+      LIVEKIT_URL: ws://livekit:7880
+      # ...and the browser-facing one handed to participants, proxied by Caddy.
+      LIVEKIT_PUBLIC_URL: ${LIVEKIT_PUBLIC_URL}
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+      # Browser-reachable, because recordings are handed out as presigned URLs
+      # that the participant's browser fetches directly. Caddy routes this
+      # bucket path through to MinIO without rewriting it, which is what keeps
+      # the SigV4 signature (computed over host + path) valid.
+      S3_ENDPOINT: ${PUBLIC_ORIGIN}
+      S3_EGRESS_ENDPOINT: http://minio:9000
+      S3_BUCKET: ${S3_BUCKET}
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      # Private bucket + short-lived signed links (enforced by env.ts).
+      S3_PUBLIC_READ: "false"
+      S3_PRESIGN_TTL_SECONDS: ${S3_PRESIGN_TTL_SECONDS:-3600}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      RECORDING_RETENTION_DAYS: ${RECORDING_RETENTION_DAYS:-30}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+    ports:
+      - "127.0.0.1:4100:4000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Empty on purpose: the SPA calls its own origin and Caddy routes
+        # /api + /socket.io to the backend. See frontend/src/services/api.ts.
+        VITE_API_URL: ""
+    image: imeet-sami-frontend:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:8080"
+
+  livekit:
+    image: livekit/livekit-server:v1.9
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      # The one place LiveKit's secret is injected. The config file itself
+      # holds only the non-secret key *name*.
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}"
+    volumes:
+      - ./deploy/livekit.prod.yaml:/etc/livekit.yaml:ro
+    ports:
+      # Signaling — loopback only; Caddy terminates TLS and proxies to it.
+      - "127.0.0.1:7890:7880"
+      # ICE/TCP fallback and the UDP media range must be reachable by
+      # participants directly, so these are the only publicly bound ports.
+      - "7882:7881"
+      - "50100-50199:50100-50199/udp"
+
+  minio:
+    image: minio/minio:RELEASE.2022-10-24T18-35-07Z
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - miniodata:/data
+    ports:
+      # Loopback only: object reads reach MinIO through Caddy (so the public
+      # URL and the signed URL agree), and the admin console is never exposed.
+      - "127.0.0.1:9010:9000"
+      - "127.0.0.1:9011:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio-init:
+    image: minio/mc:RELEASE.2022-10-29T10-09-23Z
+    # Kept out of the default service set. This is a one-shot bootstrap that
+    # runs to completion and exits, and `docker compose up --wait` treats *any*
+    # exited container as a failure — even one that exited 0 — so leaving it in
+    # the default set made every deploy report failure while the stack was
+    # actually healthy. Deploys invoke it explicitly instead:
+    #   docker compose --profile init run --rm minio-init
+    profiles: ["init"]
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      S3_BUCKET: ${S3_BUCKET}
+    # Creates the bucket and — unlike the dev stack — pointedly does NOT run
+    # `mc anonymous set download`, which would make every recording in it
+    # world-readable to anyone who learns an object URL.
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD; do sleep 1; done;
+      mc mb -p local/$$S3_BUCKET;
+      mc anonymous set none local/$$S3_BUCKET;
+      exit 0;
+      "
+
+  egress:
+    image: livekit/egress:latest
+    restart: unless-stopped
+    # Egress launches a real headless Chrome to composite the room; Docker's
+    # 64MB default /dev/shm makes Chrome fail to launch outright.
+    shm_size: "2gb"
+    # Chrome's sandbox needs this capability — without it every composite
+    # request fails with "chrome failed to start".
+    cap_add:
+      - SYS_ADMIN
+    depends_on:
+      livekit:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      # Passed inline rather than as a mounted file so the API secret never
+      # lands on disk in the repo or the image. Note there is no
+      # `insecure: true` here (the dev config needs it for its self-signed
+      # certificate) — every hop below is plain http on the internal network.
+      EGRESS_CONFIG_BODY: |
+        api_key: ${LIVEKIT_API_KEY}
+        api_secret: ${LIVEKIT_API_SECRET}
+        ws_url: ws://livekit:7880
+        redis:
+          address: redis:6379
+        logging:
+          level: info
+          json: true
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    # The single public entrypoint. Took over this role from the older `imeet`
+    # compose project, which has been shut down; see caddy/Caddyfile.prod.
+    depends_on:
+      - backend
+      - frontend
+      - livekit
+      - minio
+    volumes:
+      - ./caddy/Caddyfile.prod:/etc/caddy/Caddyfile:ro
+      # Reused from the retired `imeet` project so the Let's Encrypt
+      # certificate it already holds is not re-issued (ACME rate limits).
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+      # HTTP/3.
+      - "443:443/udp"
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
+  # Pre-existing volume from the retired `imeet` project, holding the issued
+  # certificate and the ACME account key. External so compose adopts it rather
+  # than creating an empty imeet-sami_caddy_data alongside it.
+  caddy_data:
+    external: true
+    name: imeet_caddy_data
+  caddy_config:
+
+networks:
+  # Given a fixed name so it can be referenced from outside this file. If Caddy
+  # runs in a container rather than on the host, attach it here
+  # (`docker network connect imeet-sami-net <caddy-container>`) and point the
+  # site block at the service names — the 127.0.0.1 ports published above are
+  # bound to the host loopback and are NOT reachable from inside another
+  # container. See deploy/Caddyfile.snippet.
+  default:
+    name: imeet-sami-net

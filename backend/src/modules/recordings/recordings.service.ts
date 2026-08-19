@@ -1,8 +1,8 @@
 import { EgressClient, EncodedFileOutput, EncodedFileType, S3Upload } from "livekit-server-sdk";
-import { DeleteObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { pool } from "../../config/db";
 import { env } from "../../config/env";
 import { AppError } from "../../shared/errors";
+import { deleteS3Object, toDownloadUrl } from "../../shared/storage";
 import { getIO } from "../../realtime/socket";
 
 const egressClient = new EgressClient(
@@ -10,37 +10,6 @@ const egressClient = new EgressClient(
   env.livekitApiKey,
   env.livekitApiSecret,
 );
-
-const s3Client = new S3Client({
-  region: env.s3Region,
-  endpoint: env.s3Endpoint,
-  forcePathStyle: true,
-  credentials: {
-    accessKeyId: env.s3AccessKey,
-    secretAccessKey: env.s3SecretKey,
-  },
-});
-
-// file_url is the bucket-in-path MinIO URL (e.g. http://host:9000/recordings/foo.mp4)
-// normalized in webhooks.controller.ts — the S3 key is the path with the bucket
-// prefix stripped.
-function extractS3Key(fileUrl: string): string | null {
-  try {
-    const pathname = new URL(fileUrl).pathname;
-    const prefix = `/${env.s3Bucket}/`;
-    if (!pathname.startsWith(prefix)) return null;
-    return decodeURIComponent(pathname.slice(prefix.length));
-  } catch {
-    return null;
-  }
-}
-
-async function deleteS3Object(fileUrl: string | null): Promise<void> {
-  if (!fileUrl) return;
-  const key = extractS3Key(fileUrl);
-  if (!key) return;
-  await s3Client.send(new DeleteObjectCommand({ Bucket: env.s3Bucket, Key: key }));
-}
 
 interface MeetingRow {
   id: string;
@@ -168,15 +137,19 @@ export async function listRecordings(meetingCode: string) {
     [meeting.id],
   );
   return {
-    recordings: rows.map((row) => ({
-      id: row.id,
-      fileUrl: row.file_url,
-      duration: row.duration,
-      status: row.status,
-      createdAt: row.created_at,
-      expiresAt: row.expires_at,
-      deletedAt: row.deleted_at,
-    })),
+    recordings: await Promise.all(
+      rows.map(async (row) => ({
+        id: row.id,
+        // A time-limited presigned URL in production; the stored URL as-is
+        // when the bucket is public (dev only). See shared/storage.ts.
+        fileUrl: await toDownloadUrl(row.file_url),
+        duration: row.duration,
+        status: row.status,
+        createdAt: row.created_at,
+        expiresAt: row.expires_at,
+        deletedAt: row.deleted_at,
+      })),
+    ),
   };
 }
 

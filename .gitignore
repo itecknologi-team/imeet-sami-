@@ -1,6 +1,11 @@
 node_modules/
 dist/
 .env
+# Every real deployment env file, however it's named. deploy/.env.production.example
+# (placeholders only) is the one that is meant to be committed.
+.env.*
+!.env.example
+!deploy/.env.production.example
 *.log
 .DS_Store
 *.tsbuildinfo

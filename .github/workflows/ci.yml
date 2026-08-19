@@ -1,0 +1,163 @@
+name: CI
+
+# Runs on GitHub's hosted runners — this job needs no access to the deployment
+# host, so it stays on the cloud pool. (The deploy job can't: see deploy.yml.)
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push to the same branch makes an in-flight run obsolete.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege. CI only ever reads the tree; nothing here writes back to the
+# repository, publishes a package, or comments on a PR. Declaring it explicitly
+# means a compromised dependency in a build script cannot use GITHUB_TOKEN to
+# push, regardless of the repository-wide default.
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend — typecheck, test, build, audit
+    runs-on: ubuntu-latest
+    # A job that hangs (a wedged npm registry call, a runaway tsc) would
+    # otherwise sit for the 6h default and hold the concurrency group.
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      # `npm ci` fails loudly if package.json and the lockfile disagree, which
+      # is what we want in CI — `npm install` would quietly "fix" it.
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # There is no test suite in this package yet. Rather than hardcode a
+      # `true` that silently stays green forever, this looks for a `test`
+      # script and runs it — so the day someone adds one, it becomes a real
+      # gate with no workflow edit required. Until then it reports plainly
+      # that nothing ran, instead of implying the code is tested.
+      - name: Test
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.test ? 0 : 1)"; then
+            npm test
+          else
+            echo "::notice title=No backend tests::backend/package.json defines no \"test\" script; skipping. Typecheck and build are the gate for this package."
+          fi
+
+      - name: Build
+        run: npm run build
+
+      # Advisories in production dependencies are treated as build failures;
+      # dev-only ones are reported without blocking.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  frontend:
+    name: Frontend — lint, typecheck, test, build, audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      # Same rationale as the backend Test step: auto-activates when a `test`
+      # script appears, and is honest about doing nothing until then.
+      - name: Test
+        run: |
+          if node -e "process.exit(require('./package.json').scripts?.test ? 0 : 1)"; then
+            npm test
+          else
+            echo "::notice title=No frontend tests::frontend/package.json defines no \"test\" script; skipping. Lint and the production build are the gate for this package."
+          fi
+
+      # `npm run build` runs `tsc -b` first, so this covers typechecking too.
+      # It also catches the class of failure that only appears in a real
+      # production build (module resolution, missing env, bad imports) and
+      # never in the dev server.
+      - name: Build
+        run: npm run build
+        env:
+          # Matches the deployment: the SPA talks to its own origin.
+          VITE_API_URL: ""
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  images:
+    name: Container images build
+    runs-on: ubuntu-latest
+    # Image builds pull base layers and run two full npm installs, so they get
+    # a longer budget than the source jobs.
+    timeout-minutes: 30
+    # Only worth the minutes if the code itself is sound.
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Proves the production Dockerfiles work before a deploy depends on them.
+      # No push: the deployment host builds its own images (see deploy.yml).
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: false
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: false
+          build-args: |
+            VITE_API_URL=
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+  compose:
+    name: Production compose validity
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # Catches typos and missing interpolations in the production stack
+      # definition without needing any real secret — the example file supplies
+      # placeholder values for every variable it references, so a variable
+      # added to the compose file but forgotten in the template fails here.
+      - name: Validate docker-compose.prod.yml
+        run: |
+          docker compose -f docker-compose.prod.yml \
+            --env-file deploy/.env.production.example config > /dev/null
+          echo "docker-compose.prod.yml is valid"

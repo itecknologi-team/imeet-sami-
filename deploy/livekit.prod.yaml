@@ -1,0 +1,35 @@
+# Production LiveKit config. Deliberately contains NO secret — unlike the dev
+# livekit.yaml at the repo root, which has its API secret committed. The
+# key/secret pair is injected at runtime through the LIVEKIT_KEYS environment
+# variable (see docker-compose.prod.yml), which is read from the server's
+# uncommitted .env.
+#
+# "imeet" below is only the key *name*, which is not sensitive: LiveKit looks
+# the actual secret up from LIVEKIT_KEYS by this name. The backend must be
+# configured with the matching LIVEKIT_API_KEY=imeet.
+port: 7880
+rtc:
+  tcp_port: 7881
+  # Must stay in sync with the published range in docker-compose.prod.yml and
+  # with the firewall / NAT forwards. NOTE: the retired `imeet` project in
+  # ~/imeet (stopped 2026-08-19) published 50000-50100, which overlaps this
+  # range on 50100 — if that stack is ever started again, one of the two has
+  # to move or LiveKit will fail to bind.
+  port_range_start: 50100
+  port_range_end: 50199
+  # Discover and advertise this host's real routable address for ICE. The dev
+  # config hardcodes a LAN IP via node_ip, which is wrong as soon as a
+  # participant is outside that LAN. If the host sits behind NAT and
+  # auto-detection picks the private address, set `node_ip` to the public IP.
+  use_external_ip: true
+redis:
+  address: redis:6379
+# LiveKit posts recording lifecycle events here. This stays on the internal
+# compose network, so the backend needs no public exposure for it to work.
+webhook:
+  api_key: imeet
+  urls:
+    - http://backend:4000/api/webhooks/livekit
+logging:
+  level: info
+  json: true

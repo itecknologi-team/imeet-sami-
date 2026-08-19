@@ -18,6 +18,27 @@ interface MeetingRow {
   host_id: string | null;
 }
 
+// successUrl/cancelUrl are client-supplied and end up as the redirect target
+// of a Stripe-hosted page — i.e. a link that looks like it belongs to this
+// app. Left unchecked, that's an open redirect usable to lend our domain's
+// credibility to a phishing destination, so they must point back at one of our
+// own configured origins.
+function assertOwnOrigin(rawUrl: string, label: string): string {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new AppError(400, `${label} is not a valid URL`);
+  }
+  // In development ALLOWED_ORIGINS is intentionally empty (any LAN origin is
+  // reflected), so there is nothing to compare against; production always has
+  // an explicit allowlist (enforced in env.ts).
+  if (env.allowedOrigins.length > 0 && !env.allowedOrigins.includes(url.origin)) {
+    throw new AppError(400, `${label} must point back to this application`);
+  }
+  return url.toString();
+}
+
 async function findMeetingByCode(meetingCode: string): Promise<MeetingRow> {
   const { rows } = await pool.query<MeetingRow>(
     "SELECT id, price_cents, host_id FROM meetings WHERE meeting_code = $1",
@@ -37,6 +58,8 @@ export async function createCheckoutSession(
   cancelUrl: string,
 ) {
   const stripe = requireStripe();
+  const safeSuccessUrl = assertOwnOrigin(successUrl, "successUrl");
+  const safeCancelUrl = assertOwnOrigin(cancelUrl, "cancelUrl");
   const meeting = await findMeetingByCode(meetingCode);
 
   if (!meeting.price_cents || meeting.price_cents <= 0) {
@@ -58,8 +81,8 @@ export async function createCheckoutSession(
         quantity: 1,
       },
     ],
-    success_url: successUrl,
-    cancel_url: cancelUrl,
+    success_url: safeSuccessUrl,
+    cancel_url: safeCancelUrl,
   });
 
   await pool.query(

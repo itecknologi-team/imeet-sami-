@@ -1,4 +1,5 @@
 import { pool } from "../../config/db";
+import { assertPublicHttpsUrl } from "../../shared/ssrf";
 
 interface MeetingInfoRow {
   title: string;
@@ -40,9 +41,20 @@ export async function syncMeetingEnd(meetingId: string, meetingCode: string, tot
         ? Math.round((new Date(meeting.ended_at).getTime() - new Date(meeting.started_at).getTime()) / 60_000)
         : null;
 
-    await fetch(webhookUrl, {
+    // Re-validated here, not just when the user saved it: DNS for a hostname
+    // that resolved publicly at save time can be re-pointed at an internal
+    // address afterwards (DNS rebinding).
+    const safeUrl = await assertPublicHttpsUrl(webhookUrl);
+
+    await fetch(safeUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      // A 3xx to http://169.254.169.254/... would otherwise be followed
+      // automatically, defeating the check above.
+      redirect: "manual",
+      // Without a deadline a hostile/hanging endpoint pins this request (and
+      // its socket) open indefinitely.
+      signal: AbortSignal.timeout(10_000),
       body: JSON.stringify({
         meetingCode,
         title: meeting.title,

@@ -1,0 +1,8 @@
+# Keeping node_modules out of the build context matters for more than speed:
+# copying a host-built tree over the image's own `npm ci` result can mix
+# platform-specific binaries into the image.
+node_modules
+dist
+.env
+.env.*
+*.log

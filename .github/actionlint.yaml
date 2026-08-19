@@ -1,0 +1,9 @@
+# Declares the custom labels used by this repo's self-hosted runner, so
+# actionlint can tell a real typo from a label it simply doesn't know about.
+#
+# `imeet-prod` is the label given to the runner installed on the deployment
+# host (192.168.20.141) during registration — see deploy/DEPLOYMENT.md §2.3.
+# It must match `runs-on:` in .github/workflows/deploy.yml.
+self-hosted-runner:
+  labels:
+    - imeet-prod

@@ -306,11 +306,24 @@ export function useMeeting(
         // The host is auto-approved server-side (isMeetingHost checks the
         // DB), so this handshake is a no-op delay for them — everyone else
         // waits here until the host responds via respond-join-request.
-        const handshakeSocket = createMeetingSocket();
+        // Identity is proved once here, in the handshake — the server derives
+        // the acting user from it and ignores any userId in later payloads.
+        const handshakeSocket = createMeetingSocket({
+          accessToken,
+          guestId,
+          name: user.name,
+        });
         socketRef.current = handshakeSocket;
         setSocket(handshakeSocket);
+        handshakeSocket.on("connect_error", (connectErr) => {
+          console.error("Realtime connection rejected:", connectErr.message);
+          if (!cancelled) {
+            setWaitingForApproval(false);
+            setError("Could not connect to the meeting — please sign in again and retry.");
+          }
+        });
         setWaitingForApproval(true);
-        handshakeSocket.emit("request-join", { meetingCode, userId: user.id, name: user.name });
+        handshakeSocket.emit("request-join", { meetingCode });
         const approved = await new Promise<boolean>((resolve) => {
           function onApproved() {
             cleanup();
@@ -425,8 +438,12 @@ export function useMeeting(
         }
 
         const socket = handshakeSocket;
-        socket.emit("join-room", { meetingCode, userId: user.id, name: user.name });
-        socket.emit("set-caption-language", { meetingCode, userId: user.id, language: captionLanguage });
+        socket.on("join-room-error", ({ error: joinError }: { error: string }) => {
+          console.error("Realtime join rejected:", joinError);
+          setError("Could not join the meeting's realtime session — please reload.");
+        });
+        socket.emit("join-room", { meetingCode });
+        socket.emit("set-caption-language", { meetingCode, language: captionLanguage });
 
         socket.on("active-view-changed", ({ view }: { view: ActiveView }) => {
           setActiveViewState(view);
@@ -778,8 +795,8 @@ export function useMeeting(
       return;
     }
     setIsMuted(next);
-    socketRef.current?.emit("toggle-mute", { meetingCode, userId: currentUser?.id, isMuted: next });
-  }, [isMuted, room, meetingCode, currentUser, pushNotification]);
+    socketRef.current?.emit("toggle-mute", { meetingCode, isMuted: next });
+  }, [isMuted, room, meetingCode, pushNotification]);
 
   const toggleCamera = useCallback(async () => {
     const next = !isCameraOn;
@@ -790,8 +807,8 @@ export function useMeeting(
       return;
     }
     setIsCameraOn(next);
-    socketRef.current?.emit("toggle-camera", { meetingCode, userId: currentUser?.id, isCameraOn: next });
-  }, [isCameraOn, room, meetingCode, currentUser, pushNotification]);
+    socketRef.current?.emit("toggle-camera", { meetingCode, isCameraOn: next });
+  }, [isCameraOn, room, meetingCode, pushNotification]);
 
   const toggleScreenShare = useCallback(async () => {
     const next = !isScreenSharing;
@@ -819,12 +836,7 @@ export function useMeeting(
   const sendMessage = useCallback(
     (text: string) => {
       if (!currentUser) return;
-      socketRef.current?.emit("send-message", {
-        meetingCode,
-        userId: currentUser.id,
-        name: currentUser.name,
-        text,
-      });
+      socketRef.current?.emit("send-message", { meetingCode, text });
     },
     [meetingCode, currentUser],
   );
@@ -832,13 +844,7 @@ export function useMeeting(
   const sendPrivateMessage = useCallback(
     (targetUserId: string, text: string) => {
       if (!currentUser) return;
-      socketRef.current?.emit("send-private-message", {
-        meetingCode,
-        userId: currentUser.id,
-        name: currentUser.name,
-        targetUserId,
-        text,
-      });
+      socketRef.current?.emit("send-private-message", { meetingCode, targetUserId, text });
     },
     [meetingCode, currentUser],
   );
@@ -846,12 +852,7 @@ export function useMeeting(
   const askAI = useCallback(
     (question: string) => {
       if (!currentUser) return;
-      socketRef.current?.emit("ask-ai", {
-        meetingCode,
-        userId: currentUser.id,
-        name: currentUser.name,
-        question,
-      });
+      socketRef.current?.emit("ask-ai", { meetingCode, question });
     },
     [meetingCode, currentUser],
   );
@@ -864,7 +865,7 @@ export function useMeeting(
     (language: string) => {
       setCaptionLanguageState(language);
       if (currentUser) {
-        socketRef.current?.emit("set-caption-language", { meetingCode, userId: currentUser.id, language });
+        socketRef.current?.emit("set-caption-language", { meetingCode, language });
       }
     },
     [meetingCode, currentUser],
@@ -874,7 +875,7 @@ export function useMeeting(
     (x: number, y: number) => {
       setMyAvatarPosition({ x, y });
       if (currentUser) {
-        socketRef.current?.emit("avatar-move", { meetingCode, userId: currentUser.id, x, y });
+        socketRef.current?.emit("avatar-move", { meetingCode, x, y });
       }
     },
     [meetingCode, currentUser],
@@ -884,13 +885,13 @@ export function useMeeting(
     if (!currentUser) return;
     const next = !raisedHands.includes(currentUser.id);
     setRaisedHands((prev) => (next ? [...prev, currentUser.id] : prev.filter((id) => id !== currentUser.id)));
-    socketRef.current?.emit("toggle-hand", { meetingCode, userId: currentUser.id, raised: next });
+    socketRef.current?.emit("toggle-hand", { meetingCode, raised: next });
   }, [meetingCode, currentUser, raisedHands]);
 
   const sendReaction = useCallback(
     (emoji: string) => {
       if (!currentUser) return;
-      socketRef.current?.emit("send-reaction", { meetingCode, userId: currentUser.id, name: currentUser.name, emoji });
+      socketRef.current?.emit("send-reaction", { meetingCode, emoji });
     },
     [meetingCode, currentUser],
   );
@@ -936,10 +937,10 @@ export function useMeeting(
     if (accessToken || guestId) {
       await api.leaveMeeting(accessToken, meetingCode, guestId ?? undefined).catch(() => undefined);
     }
-    socketRef.current?.emit("leave-room", { meetingCode, userId: currentUser?.id });
+    socketRef.current?.emit("leave-room", { meetingCode });
     socketRef.current?.disconnect();
     await room.disconnect();
-  }, [accessToken, guestId, meetingCode, currentUser, room]);
+  }, [accessToken, guestId, meetingCode, room]);
 
   const endMeetingForAll = useCallback(async () => {
     if (accessToken || guestId) {

@@ -1,0 +1,85 @@
+# Public entrypoint for imeet-sami on 192.168.20.141.
+#
+# This Caddy replaced the one that used to belong to the older `imeet` compose
+# project (~/imeet), which has been shut down. It reuses that project's data
+# volume (declared external as `imeet_caddy_data` in docker-compose.prod.yml)
+# so the already-issued Let's Encrypt certificate for imeet.itecknologi.com
+# carries over instead of being re-requested.
+#
+# Upstreams are Docker service names, not 127.0.0.1: Caddy is a container, so
+# loopback here is Caddy itself, while the stack's ports are published on the
+# *host* loopback. Being in the same compose project puts it on imeet-sami-net
+# automatically — no `docker network connect` needed any more.
+#
+# Route order matters: Caddy evaluates handle/handle_path blocks in the order
+# written, and the SPA catch-all must stay last or it swallows the API and
+# media routes.
+
+imeet.itecknologi.com {
+	# Certificate is provisioned and renewed automatically. This needs ports
+	# 80 and 443 reachable from the internet for the ACME challenge.
+	encode zstd gzip
+
+	# The API sets its own headers via helmet; these cover the HTML/JS the
+	# browser loads.
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		# Camera/mic/screen-share are the app's core function, so they're
+		# allowed for this origin and denied to any embedded third party.
+		Permissions-Policy "camera=(self), microphone=(self), display-capture=(self), geolocation=()"
+		-Server
+	}
+
+	# ---- REST API -----------------------------------------------------------
+	handle /api/* {
+		reverse_proxy backend:4000
+	}
+
+	# ---- Socket.IO ----------------------------------------------------------
+	# Websocket upgrades need no special directive in Caddy v2. The long
+	# timeouts keep an idle meeting's control channel from being cut
+	# mid-meeting.
+	handle /socket.io/* {
+		reverse_proxy backend:4000 {
+			transport http {
+				read_timeout 24h
+				write_timeout 24h
+			}
+		}
+	}
+
+	# ---- LiveKit signaling --------------------------------------------------
+	# handle_path strips the /livekit prefix, so /livekit/rtc arrives at
+	# LiveKit as /rtc — the path livekit-client actually requests (it appends
+	# /rtc to LIVEKIT_PUBLIC_URL itself).
+	#
+	# Media does NOT flow through here: it goes directly to this host over
+	# UDP 50101-50199, or TCP 7882 as a fallback.
+	handle_path /livekit/* {
+		reverse_proxy livekit:7880 {
+			transport http {
+				read_timeout 24h
+				write_timeout 24h
+			}
+		}
+	}
+
+	# ---- Recording / video objects -----------------------------------------
+	# Proxied WITHOUT rewriting the path: the backend hands out presigned
+	# (SigV4) URLs signed over this exact host + path, so altering either
+	# invalidates the signature and MinIO returns 403.
+	#
+	# Keep this path in sync with S3_BUCKET in /opt/imeet-sami/.env.
+	handle /imeet-media/* {
+		reverse_proxy minio:9000
+	}
+
+	# ---- SPA ----------------------------------------------------------------
+	# Catch-all, must stay last. The frontend container serves index.html for
+	# unknown paths so client-side routing works.
+	handle {
+		reverse_proxy frontend:8080
+	}
+}

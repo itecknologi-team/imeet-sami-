@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { AccessToken } from "livekit-server-sdk";
 import { pool } from "../../config/db";
 import { env } from "../../config/env";
@@ -36,17 +37,31 @@ const CODE_SEGMENT_LENGTHS = [3, 4, 3];
 // instant/guest meetings must never silently accrue a cost.
 const DEFAULT_HOURLY_RATE = 0;
 
+// The meeting code IS the capability to reach a meeting, so it has to be
+// unguessable. Math.random() is a non-cryptographic PRNG: observing a few
+// issued codes is enough to recover its internal state and then predict every
+// subsequent one. randomInt draws from the CSPRNG instead, and rejects modulo
+// bias while doing it.
 function randomSegment(length: number): string {
   const chars = "abcdefghijklmnopqrstuvwxyz";
   let out = "";
   for (let i = 0; i < length; i++) {
-    out += chars[Math.floor(Math.random() * chars.length)];
+    out += chars[crypto.randomInt(chars.length)];
   }
   return out;
 }
 
 function generateMeetingCode(): string {
   return CODE_SEGMENT_LENGTHS.map(randomSegment).join("-");
+}
+
+// `===` on secrets short-circuits at the first differing byte, so response
+// timing leaks how much of a guess was correct — enough to recover a short
+// passcode character by character. Hash both sides first so the comparison is
+// always over equal-length digests, then compare in constant time.
+function passcodeMatches(expected: string, provided: string | undefined): boolean {
+  const digest = (value: string) => crypto.createHash("sha256").update(value, "utf8").digest();
+  return crypto.timingSafeEqual(digest(expected), digest(provided ?? ""));
 }
 
 function isUniqueViolation(err: unknown): boolean {
@@ -217,7 +232,7 @@ export async function joinMeeting(
   if (meeting.status === "ended") {
     throw new AppError(400, "Meeting has ended");
   }
-  if (meeting.passcode && meeting.passcode !== (passcode ?? "")) {
+  if (meeting.passcode && !passcodeMatches(meeting.passcode, passcode)) {
     throw new AppError(403, "Incorrect passcode");
   }
 
@@ -293,8 +308,36 @@ export async function joinMeeting(
       startedAt: meeting.started_at,
     },
     livekitToken,
-    livekitUrl: env.livekitUrl,
+    // The browser-facing URL, not the internal one the server SDK uses.
+    livekitUrl: env.livekitPublicUrl,
   };
+}
+
+// Socket identity is authenticated at connection time (realtime/socket.ts),
+// but *membership* of a given meeting still has to be checked against the DB:
+// the REST join endpoint is what enforces the passcode and the paywall, and
+// what writes the participant row this reads. Requiring the row means the
+// realtime channel can't be used to skip those checks.
+export async function isActiveParticipant(meetingCode: string, identity: string): Promise<boolean> {
+  const meeting = await findMeetingRowByCode(meetingCode);
+  if (meeting.status === "ended") return false;
+
+  if (identity.startsWith("guest-")) {
+    const guestId = identity.slice("guest-".length);
+    const { rows } = await pool.query(
+      `SELECT 1 FROM meeting_participants
+       WHERE meeting_id = $1 AND guest_id = $2 AND left_at IS NULL LIMIT 1`,
+      [meeting.id, guestId],
+    );
+    return rows.length > 0;
+  }
+
+  const { rows } = await pool.query(
+    `SELECT 1 FROM meeting_participants
+     WHERE meeting_id = $1 AND user_id = $2 AND left_at IS NULL LIMIT 1`,
+    [meeting.id, identity],
+  );
+  return rows.length > 0;
 }
 
 // Sockets have no equivalent of the REST layer's requireAuth/optionalAuth

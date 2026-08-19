@@ -1,17 +1,9 @@
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import crypto from "crypto";
+import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { pool } from "../../config/db";
 import { env } from "../../config/env";
 import { AppError } from "../../shared/errors";
-
-const s3Client = new S3Client({
-  region: env.s3Region,
-  endpoint: env.s3Endpoint,
-  forcePathStyle: true,
-  credentials: {
-    accessKeyId: env.s3AccessKey,
-    secretAccessKey: env.s3SecretKey,
-  },
-});
+import { s3Client, toDownloadUrl } from "../../shared/storage";
 
 interface AsyncVideoRow {
   id: string;
@@ -21,11 +13,12 @@ interface AsyncVideoRow {
   created_at: string;
 }
 
-function toAsyncVideo(row: AsyncVideoRow) {
+async function toAsyncVideo(row: AsyncVideoRow) {
   return {
     id: row.id,
     title: row.title,
-    fileUrl: row.file_url,
+    // Presigned and short-lived in production — see shared/storage.ts.
+    fileUrl: await toDownloadUrl(row.file_url),
     duration: row.duration,
     createdAt: row.created_at,
   };
@@ -37,7 +30,10 @@ export async function uploadVideo(
   videoBuffer: Buffer,
   durationSeconds: number | null,
 ) {
-  const key = `async-videos/${ownerId}-${Date.now()}.webm`;
+  // A random suffix rather than a timestamp: `${ownerId}-${Date.now()}` is
+  // guessable, which matters because the object key is the only thing standing
+  // between a video and anyone who can reach the bucket.
+  const key = `async-videos/${ownerId}-${crypto.randomBytes(16).toString("hex")}.webm`;
   await s3Client.send(
     new PutObjectCommand({
       Bucket: env.s3Bucket,
@@ -65,7 +61,7 @@ export async function listMyVideos(ownerId: string) {
      ORDER BY created_at DESC`,
     [ownerId],
   );
-  return { videos: rows.map(toAsyncVideo) };
+  return { videos: await Promise.all(rows.map(toAsyncVideo)) };
 }
 
 export async function getVideo(videoId: string) {

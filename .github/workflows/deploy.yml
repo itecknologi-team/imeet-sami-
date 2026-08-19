@@ -1,0 +1,173 @@
+name: Deploy to production
+
+# WHY A SELF-HOSTED RUNNER, NOT SSH FROM A CLOUD RUNNER
+# ----------------------------------------------------
+# The target is 192.168.20.141 — an RFC1918 private address. GitHub's hosted
+# runners live on the public internet and cannot route to it, so the usual
+# "ssh into the server" deploy step simply cannot connect. The options are to
+# expose SSH to the internet (a permanent inbound attack surface, and a
+# long-lived private key in GitHub secrets) or to run the job on a machine that
+# is already inside the network. The second is both simpler and safer, so this
+# workflow runs on a self-hosted runner installed on the deployment host
+# itself: nothing inbound has to be opened, and no SSH key or credential needs
+# to leave the network.
+#
+# Setup for the runner and the server-side .env is in deploy/DEPLOYMENT.md.
+
+on:
+  # Deploys are deliberately manual by default — a video meeting server should
+  # not restart underneath live meetings because someone merged a README fix.
+  # To deploy automatically on every merge to main, uncomment the push trigger.
+  workflow_dispatch:
+    inputs:
+      run_migrations:
+        description: "Apply pending database migrations"
+        type: boolean
+        default: true
+  # push:
+  #   branches: [main]
+
+# Never let two deploys touch the stack at once; queue instead of cancelling,
+# so a run that is already mutating containers is allowed to finish.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+# Least privilege: the deploy reads the tree and touches the local Docker
+# stack. It never writes back to the repository.
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build and restart the stack
+    # This label must match the one given to the runner during registration.
+    runs-on: [self-hosted, imeet-prod]
+
+    # A wedged deploy holds the `deploy-production` concurrency group and
+    # blocks every later deploy, so it must not be allowed to hang for the 6h
+    # default. Image builds on this host take a few minutes cold.
+    timeout-minutes: 45
+
+    # Optional but recommended: configure "production" in
+    # Settings → Environments with required reviewers, so a deploy needs an
+    # explicit approval click.
+    environment: production
+
+    env:
+      COMPOSE_FILE: docker-compose.prod.yml
+      # Lives outside the repo checkout so it survives every deploy and is
+      # never at risk of being overwritten by a git operation.
+      ENV_FILE: /opt/imeet-sami/.env
+      PROJECT: imeet-sami
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # This runner is a long-lived machine inside the network, not a
+          # throwaway cloud VM. Without this, the job's GITHUB_TOKEN is left
+          # behind in .git/config on disk between runs, where any other process
+          # on the host can read it. Nothing here pushes, so it is not needed.
+          persist-credentials: false
+
+      - name: Verify the server-side env file exists
+        run: |
+          if [ ! -f "$ENV_FILE" ]; then
+            echo "::error::$ENV_FILE not found. Create it from deploy/.env.production.example (chmod 600) before deploying."
+            exit 1
+          fi
+          # Fail fast on a half-filled template rather than after the stack is
+          # already half-restarted.
+          if grep -q "CHANGE_ME" "$ENV_FILE"; then
+            echo "::error::$ENV_FILE still contains CHANGE_ME placeholders."
+            exit 1
+          fi
+          echo "Env file present."
+
+      - name: Record the currently deployed revision
+        # Read before anything changes, so the rollback hint printed on failure
+        # can name the exact commit that was last known good. Kept next to the
+        # env file rather than in the checkout, which git would overwrite.
+        run: |
+          PREV=$(cat /opt/imeet-sami/deployed_revision 2>/dev/null || echo unknown)
+          echo "previous_revision=$PREV" >> "$GITHUB_ENV"
+          echo "Previously deployed revision: $PREV"
+
+      - name: Build images
+        # Built here rather than pulled from a registry: the host is the only
+        # consumer, so a registry would add a moving part (and credentials)
+        # without buying anything.
+        run: |
+          docker compose --env-file "$ENV_FILE" build \
+            --build-arg BUILDKIT_INLINE_CACHE=1
+
+      - name: Start datastores
+        # Migrations need a reachable database, and the compose healthchecks
+        # give us a real readiness signal to wait on.
+        run: docker compose --env-file "$ENV_FILE" up -d --wait postgres redis minio
+
+      - name: Ensure the storage bucket exists
+        # Run synchronously, and kept out of the default service set via its
+        # compose profile: it's a one-shot that exits, and `up --wait` counts
+        # an exited container as a failure whatever its exit code.
+        run: docker compose --env-file "$ENV_FILE" --profile init run --rm minio-init
+
+      - name: Apply database migrations
+        if: ${{ inputs.run_migrations }}
+        # migrate.ts is idempotent — it tracks applied files in
+        # schema_migrations and each file runs in its own transaction.
+        run: |
+          docker compose --env-file "$ENV_FILE" run --rm --no-deps \
+            backend npm run migrate:prod
+
+      - name: Start the full stack
+        # --wait blocks until every service with a healthcheck reports healthy,
+        # so a container that boots and immediately crashes fails the deploy
+        # instead of silently restart-looping.
+        run: docker compose --env-file "$ENV_FILE" up -d --wait --remove-orphans
+
+      - name: Verify the backend is serving
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 5 http://127.0.0.1:4100/api/health | grep -q '"status":"ok"'; then
+              echo "Backend healthy after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::Backend did not become healthy within 30s"
+          exit 1
+
+      - name: Verify the site is reachable through Caddy
+        run: |
+          ORIGIN=$(grep -E '^PUBLIC_ORIGIN=' "$ENV_FILE" | cut -d= -f2-)
+          echo "Checking $ORIGIN/api/health"
+          # Confirms the whole path — TLS, Caddy routing, the app — not just
+          # the container. A failure here with a healthy container above means
+          # the reverse proxy config, not the deploy, is what's wrong.
+          curl -fsS --max-time 15 "$ORIGIN/api/health" | grep -q '"status":"ok"'
+          echo "Public endpoint healthy"
+
+      - name: Record this revision as deployed
+        if: success()
+        run: echo "${{ github.sha }}" > /opt/imeet-sami/deployed_revision
+
+      - name: Prune superseded images
+        # Keeps the host's disk from filling with every previously built layer.
+        # Only dangling images — nothing currently referenced is touched.
+        if: success()
+        run: docker image prune -f
+
+      - name: Report failure with rollback instructions
+        if: failure()
+        run: |
+          echo "::group::Container status"
+          docker compose --env-file "$ENV_FILE" ps || true
+          echo "::endgroup::"
+          echo "::group::Recent backend logs"
+          docker compose --env-file "$ENV_FILE" logs --tail=100 backend || true
+          echo "::endgroup::"
+          echo "::group::Recent livekit logs"
+          docker compose --env-file "$ENV_FILE" logs --tail=50 livekit || true
+          echo "::endgroup::"
+          echo "::error::Deploy failed. To roll back: check out ${{ env.previous_revision }} and re-run this workflow."

@@ -5,6 +5,7 @@ import { OAuth2Client } from "google-auth-library";
 import { pool } from "../../config/db";
 import { env } from "../../config/env";
 import { AppError } from "../../shared/errors";
+import { assertPublicHttpsUrl } from "../../shared/ssrf";
 
 const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -131,6 +132,13 @@ export async function getMe(userId: string) {
 }
 
 export async function updateCrmWebhookUrl(userId: string, webhookUrl: string | null) {
+  // Rejected up front so the user sees why, rather than saving a URL that the
+  // end-of-meeting sync will silently refuse to call. See shared/ssrf.ts for
+  // what this blocks and why it's re-checked at request time too.
+  if (webhookUrl) {
+    await assertPublicHttpsUrl(webhookUrl);
+  }
+
   const { rows } = await pool.query<{ crm_webhook_url: string | null }>(
     "UPDATE users SET crm_webhook_url = $2 WHERE id = $1 RETURNING crm_webhook_url",
     [userId, webhookUrl],

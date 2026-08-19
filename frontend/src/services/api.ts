@@ -1,13 +1,24 @@
-// Derived from whatever host actually loaded this page instead of a
-// hardcoded "localhost" — a device on the LAN loads the frontend via this
-// machine's LAN IP, and "localhost" in its browser would mean itself, not
-// this server. The protocol is derived too (not hardcoded to http) since the
-// backend now speaks https — a page loaded over https can't call out to a
-// plain http API (blocked as mixed content). VITE_API_URL still wins if
-// explicitly set (e.g. behind a reverse proxy or tunnel with its own
-// hostname).
+// Three cases, in precedence order:
+//
+//  1. VITE_API_URL set to a URL — an explicitly separate API origin, wins
+//     everywhere.
+//  2. A production build — the API is served under the *same* origin as this
+//     page (Caddy routes /api and /socket.io to the backend), so requests stay
+//     relative paths. This is what makes the app work behind a reverse proxy
+//     with no port exposed; the dev default below would point the browser at
+//     :4000 on the public hostname, which is firewalled.
+//  3. A dev build — derived from whatever host actually loaded the page rather
+//     than a hardcoded "localhost", so a phone on the LAN reaches this machine
+//     and not itself. The protocol is derived too, since a page loaded over
+//     https can't call a plain-http API (blocked as mixed content).
+const configuredApiUrl = import.meta.env.VITE_API_URL as string | undefined;
+
 export const API_BASE_URL =
-  import.meta.env.VITE_API_URL ?? `${window.location.protocol}//${window.location.hostname}:4000`;
+  configuredApiUrl
+    ? configuredApiUrl
+    : import.meta.env.PROD
+      ? ""
+      : `${window.location.protocol}//${window.location.hostname}:4000`;
 
 export interface HealthResponse {
   status: "ok";

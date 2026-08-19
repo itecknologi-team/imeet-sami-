@@ -1,0 +1,39 @@
+# Normalise line endings on the way into the repository.
+#
+# This repo is developed on Windows (core.autocrlf=true) and deployed to Linux
+# containers. Without this file, a Windows clone checks shell scripts out with
+# CRLF endings; `deploy/manual-deploy.sh` then fails on the server with
+# "bad interpreter: /usr/bin/env bash^M", and any `RUN ./script` in a
+# Dockerfile fails the same way. Forcing LF for executable and
+# container-consumed text removes that whole class of failure.
+
+# Let git decide for anything not named below.
+* text=auto
+
+# Must be LF: executed by a POSIX shell, on the host or inside an image.
+*.sh            text eol=lf
+Dockerfile      text eol=lf
+*.Dockerfile    text eol=lf
+Caddyfile       text eol=lf
+Caddyfile.*     text eol=lf
+.dockerignore   text eol=lf
+
+# Must be LF: read by Linux tooling (compose, LiveKit, the migration runner).
+*.yml           text eol=lf
+*.yaml          text eol=lf
+*.sql           text eol=lf
+
+# Source and config consumed by the Linux builds.
+*.ts            text eol=lf
+*.tsx           text eol=lf
+*.json          text eol=lf
+*.css           text eol=lf
+*.html          text eol=lf
+*.md            text eol=lf
+
+# Binary — never touch, never diff as text.
+*.png           binary
+*.jpg           binary
+*.ico           binary
+*.woff          binary
+*.woff2         binary
