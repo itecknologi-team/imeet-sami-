@@ -829,6 +829,22 @@ export function useMeeting(
   const toggleScreenShare = useCallback(async () => {
     const next = !isScreenSharing;
     await room.localParticipant.setScreenShareEnabled(next, { audio: false });
+    if (next) {
+      // Belt-and-suspenders: on Windows, Chrome's native "Entire Screen" /
+      // "Window" capture picker can still offer (and return) a system-audio
+      // track from getDisplayMedia even when {audio: false} is requested —
+      // livekit-client's createLocalScreenTracks only checks whether the
+      // returned stream *has* an audio track, not what we asked for, and
+      // publishes it anyway if so. Kill any such track immediately so
+      // screen share is guaranteed video-only, matching a plain call's
+      // audio like Zoom/Meet — otherwise that captured system audio
+      // (including whatever's coming out of the presenter's own speakers)
+      // gets published and echoed back to them by everyone else's playback.
+      const screenAudioPub = room.localParticipant.getTrackPublication(Track.Source.ScreenShareAudio);
+      if (screenAudioPub?.track) {
+        await room.localParticipant.unpublishTrack(screenAudioPub.track).catch(() => undefined);
+      }
+    }
     setIsScreenSharing(next);
   }, [isScreenSharing, room]);
 
