@@ -47,7 +47,7 @@ export async function signup(name: string, email: string, password: string) {
     throw new AppError(400, "Email already registered");
   }
 
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = await bcrypt.hash(password, 12);
   const { rows } = await pool.query<UserRow>(
     `INSERT INTO users (name, email, password_hash, auth_provider)
      VALUES ($1, $2, $3, 'email')

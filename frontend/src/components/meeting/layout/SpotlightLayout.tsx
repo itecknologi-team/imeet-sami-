@@ -48,7 +48,7 @@ export function SpotlightLayout({ participants, stageParticipantId, pinnedId, on
         )}
       </div>
       {showSelfPreview && local && (
-        <div className="absolute bottom-6 right-6 h-28 w-44 shadow-[0_8px_24px_rgba(16,42,67,0.28)]">
+        <div className="absolute bottom-3 right-3 h-20 w-32 shadow-[0_8px_24px_rgba(16,42,67,0.28)] sm:bottom-6 sm:right-6 sm:h-28 sm:w-44">
           <ParticipantTile id={local.id} participant={local.participant} name={local.name} isLocal isSpeaking={local.isSpeaking} />
         </div>
       )}

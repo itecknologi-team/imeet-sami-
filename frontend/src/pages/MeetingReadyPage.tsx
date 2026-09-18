@@ -54,7 +54,10 @@ export function MeetingReadyPage() {
 
   function handleJoinNow() {
     navigate(`/meeting/${meetingCode}`, {
-      state: user ? undefined : { guestName: state?.guestName, passcode: state?.passcode },
+      state: {
+        passcode: state?.passcode,
+        ...(user ? {} : { guestName: state?.guestName }),
+      },
     });
   }
 

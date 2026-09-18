@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Track } from "livekit-client";
 import type { LocalParticipant, RemoteParticipant, Room } from "livekit-client";
 import { useActiveSpeaker } from "../../../hooks/useActiveSpeaker";
+import { useElementSize } from "../../../hooks/useElementSize";
 import type { AdjustViewReturn } from "../../../hooks/useAdjustViewSettings";
 import { ParticipantTile } from "./ParticipantTile";
 import { FilmstripLayout } from "./FilmstripLayout";
@@ -41,6 +42,14 @@ export function LayoutRenderer({
 }: LayoutRendererProps) {
   const localParticipant = room.localParticipant;
   const localId = localParticipant.identity;
+
+  // Measures the two-up container so it can pick a stacked (portrait) vs
+  // side-by-side (landscape/desktop) split from the space actually available
+  // — same "which arrangement fits these tiles best" math Tiled mode already
+  // uses, just specialized to exactly 2 tiles. Called unconditionally
+  // (Rules of Hooks) even though only the auto-two branch below attaches the
+  // ref; other modes just leave it unused at 0×0.
+  const { ref: twoUpRef, width: twoUpWidth, height: twoUpHeight } = useElementSize<HTMLDivElement>();
 
   const allLiveKitParticipants = useMemo(
     () => [localParticipant as LocalParticipant | RemoteParticipant, ...remoteParticipants],
@@ -145,12 +154,21 @@ export function LayoutRenderer({
   }
 
   if (mode === "auto-two") {
-    // Exactly 2 participants: a guaranteed 50/50 split divided by a vertical
-    // line (two equal side-by-side columns) — deliberately NOT the generic
-    // auto-fit grid engine, which could pick a stacked 1x2 on a narrow/tall
-    // container. Two people always get the same left/right split.
+    // Exactly 2 participants: always an equal 50/50 split, but which way it
+    // splits follows the space actually available — side-by-side columns on
+    // a landscape/wide container (desktop, phone in landscape), stacked
+    // top/bottom on a portrait/narrow one (a phone held upright forcing 2
+    // columns squeezes both videos into tall, narrow, unreadable strips
+    // otherwise). Plain width-vs-height, not the Tiled grid's tile-aspect
+    // optimizer — that heuristic assumes each tile letterboxes to 16:9, but
+    // ParticipantTile always crops to fill (object-cover), so it doesn't
+    // apply here and would stack even a wide desktop window.
+    const isPortraitContainer = twoUpWidth > 0 && twoUpHeight > twoUpWidth;
     return (
-      <div className="flex min-h-0 w-full flex-1 gap-[var(--meeting-gap)]">
+      <div
+        ref={twoUpRef}
+        className={`flex min-h-0 w-full flex-1 gap-[var(--meeting-gap)] ${isPortraitContainer ? "flex-col" : "flex-row"}`}
+      >
         {layoutParticipants.map((p) => (
           <div key={p.id} className="meeting-layout-transition min-h-0 min-w-0 flex-1">
             <ParticipantTile

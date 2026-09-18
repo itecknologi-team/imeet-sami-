@@ -1,5 +1,5 @@
 export interface HealthResponse {
-  status: "ok";
+  status: "ok" | "error";
   timestamp: string;
 }
 

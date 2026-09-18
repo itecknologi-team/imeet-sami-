@@ -68,7 +68,8 @@ export function LandingPage() {
         navigate(`/meeting/${meeting.meetingCode}/ready`, {
           state: {
             title: meeting.title,
-            ...(user ? {} : { guestName: name.trim(), passcode: passcode.trim() || undefined, guestId }),
+            passcode: passcode.trim() || undefined,
+            ...(user ? {} : { guestName: name.trim(), guestId }),
           },
         });
       }
@@ -94,7 +95,10 @@ export function LandingPage() {
     try {
       await api.getMeeting(joinCode.trim());
       navigate(`/meeting/${joinCode.trim()}`, {
-        state: user ? undefined : { guestName: name.trim(), passcode: passcode.trim() || undefined },
+        state: {
+          passcode: passcode.trim() || undefined,
+          ...(user ? {} : { guestName: name.trim() }),
+        },
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Meeting not found");

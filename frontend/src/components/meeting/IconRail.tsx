@@ -6,14 +6,31 @@ interface IconRailProps {
   activeView: ActiveView;
   onChangeView: (view: ActiveView) => void;
   isHost: boolean;
+  canUseWhiteboard?: boolean;
+  canUseCodeEditor?: boolean;
   onNotify: (message: string) => void;
 }
 
-export function IconRail({ activeView, onChangeView, isHost, onNotify }: IconRailProps) {
-  // Whiteboard/code/virtual-office are host-only tools — everyone else can
-  // still be shown their content (the shared-view broadcast), but can't
-  // switch into them, so there's no point offering the icon at all.
-  const visibleViews = isHost ? ACTIVE_VIEWS : ACTIVE_VIEWS.filter((view) => view === "video");
+export function IconRail({
+  activeView,
+  onChangeView,
+  isHost,
+  canUseWhiteboard = false,
+  canUseCodeEditor = false,
+  onNotify,
+}: IconRailProps) {
+  // Whiteboard/code are host-only tools unless the host delegates write
+  // access via host controls — virtual-office stays host-only outright.
+  // Everyone else can still be shown a tool's content (the shared-view
+  // broadcast) without the icon, since they can't switch into it themselves.
+  const visibleViews = isHost
+    ? ACTIVE_VIEWS
+    : ACTIVE_VIEWS.filter(
+        (view) =>
+          view === "video" ||
+          (view === "whiteboard" && canUseWhiteboard) ||
+          (view === "code" && canUseCodeEditor),
+      );
 
   return (
     <div className="flex w-[72px] flex-shrink-0 flex-col items-center justify-center gap-2.5 overflow-y-auto bg-white py-2.5 pl-3 sm:w-[96px] sm:gap-4 sm:py-4 sm:pl-4">

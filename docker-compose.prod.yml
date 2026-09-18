@@ -180,7 +180,10 @@ services:
       "
 
   egress:
-    image: livekit/egress:latest
+    # Pinned like every other image in this file (livekit, minio, minio-init)
+    # — :latest would silently pull whatever resolves at deploy time since
+    # this is built locally on the deploy host with no registry involved.
+    image: livekit/egress:v1.14.1
     restart: unless-stopped
     # Egress launches a real headless Chrome to composite the room; Docker's
     # 64MB default /dev/shm makes Chrome fail to launch outright.

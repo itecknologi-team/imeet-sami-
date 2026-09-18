@@ -164,6 +164,20 @@ async function actingHost(socket: Socket, meetingCode: string): Promise<string |
   return (await requireHost(meetingCode, actor)) ? actor : null;
 }
 
+// Whiteboard/code editing are host-only by default, but the host can
+// delegate write access to everyone via host controls — same delegation
+// pattern as participantsCanPresent/CanChat/CanMuteOthers above.
+async function actingEditor(
+  socket: Socket,
+  meetingCode: string,
+  permission: "participantsCanUseWhiteboard" | "participantsCanUseCodeEditor",
+): Promise<string | null> {
+  const actor = actorIn(socket, meetingCode);
+  if (!actor) return null;
+  if (await requireHost(meetingCode, actor)) return actor;
+  return hostControlsService.getSettings(meetingCode)[permission] ? actor : null;
+}
+
 // Applies the media-affecting host-control toggles (own mic/camera,
 // presenting) to everyone currently in the room, not just future joiners —
 // used both right after the host flips a toggle and when a participant
@@ -419,32 +433,34 @@ export function registerMeetingEvents(io: IOServer, socket: Socket) {
     }
   });
 
-  // Whiteboard/code/virtual-office are host-only tools — everyone else may
-  // still see whatever the host puts on screen (the shared-view broadcast
-  // below), but can't switch into them or edit/move within them themselves.
+  // Whiteboard/code are host-only tools by default — everyone else may still
+  // see whatever the host puts on screen (the shared-view broadcast below),
+  // but can't edit within them unless the host delegates that via host
+  // controls (participantsCanUseWhiteboard/CanUseCodeEditor). Virtual-office
+  // movement stays host-only outright — no delegation for it yet.
   socket.on(
     "whiteboard-stroke-start",
     async ({ meetingCode, strokeId, color, point }: WhiteboardStrokeStartPayload) => {
-      if (!(await actingHost(socket, meetingCode))) return;
+      if (!(await actingEditor(socket, meetingCode, "participantsCanUseWhiteboard"))) return;
       whiteboardService.startStroke(meetingCode, strokeId, color, point);
       socket.to(meetingCode).emit("whiteboard-stroke-start", { strokeId, color, point });
     },
   );
 
   socket.on("whiteboard-point", async ({ meetingCode, strokeId, point }: WhiteboardPointPayload) => {
-    if (!(await actingHost(socket, meetingCode))) return;
+    if (!(await actingEditor(socket, meetingCode, "participantsCanUseWhiteboard"))) return;
     whiteboardService.addPoint(meetingCode, strokeId, point);
     socket.to(meetingCode).emit("whiteboard-point", { strokeId, point });
   });
 
   socket.on("whiteboard-clear", async ({ meetingCode }: RoomPayload) => {
-    if (!(await actingHost(socket, meetingCode))) return;
+    if (!(await actingEditor(socket, meetingCode, "participantsCanUseWhiteboard"))) return;
     whiteboardService.clear(meetingCode);
     socket.to(meetingCode).emit("whiteboard-clear");
   });
 
   socket.on("code-update", async ({ meetingCode, update }: CodeUpdatePayload) => {
-    if (!(await actingHost(socket, meetingCode))) return;
+    if (!(await actingEditor(socket, meetingCode, "participantsCanUseCodeEditor"))) return;
     codeEditorService.applyUpdate(meetingCode, update);
     socket.to(meetingCode).emit("code-update", update);
   });
@@ -458,10 +474,21 @@ export function registerMeetingEvents(io: IOServer, socket: Socket) {
 
   // Whoever switches to Whiteboard/Code/Virtual Office brings everyone
   // else's screen along too — mirrors how a shared screen is inherently
-  // visible to the whole room instead of being a private local tab. Only
-  // the host may trigger the switch, though.
+  // visible to the whole room instead of being a private local tab. The host
+  // may always trigger the switch; a delegated participant may only switch
+  // into the specific tool they've been granted write access to (and back to
+  // video) — never into virtual-office or a tool they can't edit.
   socket.on("set-active-view", async ({ meetingCode, view }: SetActiveViewPayload) => {
-    if (!(await actingHost(socket, meetingCode))) return;
+    const actor = actorIn(socket, meetingCode);
+    if (!actor) return;
+    if (!(await requireHost(meetingCode, actor))) {
+      const settings = hostControlsService.getSettings(meetingCode);
+      const canSwitch =
+        view === "video" ||
+        (view === "whiteboard" && settings.participantsCanUseWhiteboard) ||
+        (view === "code" && settings.participantsCanUseCodeEditor);
+      if (!canSwitch) return;
+    }
     sharedViewService.setView(meetingCode, view);
     socket.to(meetingCode).emit("active-view-changed", { view });
   });
@@ -488,7 +515,12 @@ export function registerMeetingEvents(io: IOServer, socket: Socket) {
       if (!canRemove || (await requireHost(meetingCode, targetUserId))) return;
     }
 
-    await mediaControlService.removeParticipant(meetingCode, targetUserId);
+    try {
+      await mediaControlService.removeParticipant(meetingCode, targetUserId);
+    } catch (err) {
+      console.error(`Failed to remove participant ${targetUserId} from ${meetingCode}:`, err);
+      return;
+    }
 
     const room = io.sockets.adapter.rooms.get(meetingCode);
     if (room) {

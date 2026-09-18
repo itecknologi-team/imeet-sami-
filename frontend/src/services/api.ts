@@ -239,7 +239,7 @@ export async function getMeeting(meetingCode: string): Promise<MeetingInfo> {
 export async function joinMeeting(
   accessToken: string | null,
   meetingCode: string,
-  guest?: GuestIdentity & { passcode?: string },
+  guest?: Partial<GuestIdentity> & { passcode?: string },
 ): Promise<JoinMeetingResponse> {
   return request<JoinMeetingResponse>(`/api/meetings/${meetingCode}/join`, {
     method: "POST",
@@ -303,8 +303,15 @@ export async function stopRecording(accessToken: string, meetingCode: string): P
   });
 }
 
-export async function getRecordings(meetingCode: string): Promise<{ recordings: Recording[] }> {
-  return request<{ recordings: Recording[] }>(`/api/meetings/${meetingCode}/recordings`);
+export async function getRecordings(
+  meetingCode: string,
+  accessToken: string | null,
+  guestId?: string | null,
+): Promise<{ recordings: Recording[] }> {
+  const qs = !accessToken && guestId ? `?guestId=${encodeURIComponent(guestId)}` : "";
+  return request<{ recordings: Recording[] }>(`/api/meetings/${meetingCode}/recordings${qs}`, {
+    headers: accessToken ? authHeader(accessToken) : {},
+  });
 }
 
 export async function deleteRecording(
@@ -332,8 +339,15 @@ export interface RecapResponse {
   highlights: Highlight[];
 }
 
-export async function getRecap(meetingCode: string): Promise<RecapResponse> {
-  return request<RecapResponse>(`/api/meetings/${meetingCode}/recap`);
+export async function getRecap(
+  meetingCode: string,
+  accessToken: string | null,
+  guestId?: string | null,
+): Promise<RecapResponse> {
+  const qs = !accessToken && guestId ? `?guestId=${encodeURIComponent(guestId)}` : "";
+  return request<RecapResponse>(`/api/meetings/${meetingCode}/recap${qs}`, {
+    headers: accessToken ? authHeader(accessToken) : {},
+  });
 }
 
 export async function uploadCaptionChunk(

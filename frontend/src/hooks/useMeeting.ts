@@ -100,6 +100,8 @@ export interface HostControlSettings {
   participantsCanPresent: boolean;
   participantsCanChat: boolean;
   participantsCanReact: boolean;
+  participantsCanUseWhiteboard: boolean;
+  participantsCanUseCodeEditor: boolean;
 }
 
 // Mirrors the backend's default (hostControls.service.ts) so the UI reads
@@ -111,6 +113,8 @@ const DEFAULT_HOST_CONTROLS: HostControlSettings = {
   participantsCanPresent: true,
   participantsCanChat: true,
   participantsCanReact: true,
+  participantsCanUseWhiteboard: false,
+  participantsCanUseCodeEditor: false,
 };
 
 interface CurrentUser {
@@ -350,7 +354,7 @@ export function useMeeting(
         const joinResp = await api.joinMeeting(
           accessToken,
           meetingCode,
-          accessToken ? undefined : { guestId: guestId!, guestName: user.name, passcode },
+          accessToken ? { passcode } : { guestId: guestId!, guestName: user.name, passcode },
         );
         if (cancelled) return;
         setHourlyRate(joinResp.meeting.hourlyRate);
@@ -430,7 +434,7 @@ export function useMeeting(
         const list = await api.getParticipants(meetingCode);
         if (!cancelled) setParticipants(list.participants);
 
-        const recordings = await api.getRecordings(meetingCode).catch(() => ({ recordings: [] }));
+        const recordings = await api.getRecordings(meetingCode, accessToken, guestId).catch(() => ({ recordings: [] }));
         if (!cancelled) {
           const active = recordings.recordings.find((r) => r.status === "recording");
           setIsRecording(Boolean(active));
@@ -812,7 +816,7 @@ export function useMeeting(
 
   const toggleScreenShare = useCallback(async () => {
     const next = !isScreenSharing;
-    await room.localParticipant.setScreenShareEnabled(next, { audio: true });
+    await room.localParticipant.setScreenShareEnabled(next, { audio: false });
     setIsScreenSharing(next);
   }, [isScreenSharing, room]);
 

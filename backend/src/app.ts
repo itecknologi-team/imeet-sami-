@@ -7,6 +7,7 @@ import asyncVideosRoutes from "./modules/asyncVideos/asyncVideos.routes";
 import meetingsRoutes from "./modules/meetings/meetings.routes";
 import webhooksRoutes from "./modules/recordings/webhooks.routes";
 import { env } from "./config/env";
+import { pool } from "./config/db";
 import { AppError, PaymentRequiredError } from "./shared/errors";
 import { HealthResponse } from "./shared/types";
 
@@ -43,12 +44,20 @@ export function createApp(): Application {
   // Health must stay outside the rate limiter — container/proxy health probes
   // poll it constantly and would otherwise exhaust the bucket for real users
   // sharing that source IP.
-  app.get("/api/health", (_req, res) => {
-    const body: HealthResponse = {
-      status: "ok",
-      timestamp: new Date().toISOString(),
-    };
-    res.status(200).json(body);
+  // Actually checks DB reachability rather than returning a static 200 —
+  // container/deploy health probes rely on this to detect a real outage
+  // (e.g. Postgres down) instead of reporting the app healthy while every
+  // real request fails.
+  app.get("/api/health", async (_req, res) => {
+    try {
+      await pool.query("SELECT 1");
+      const body: HealthResponse = { status: "ok", timestamp: new Date().toISOString() };
+      res.status(200).json(body);
+    } catch (err) {
+      console.error("Health check failed — database unreachable:", err);
+      const body: HealthResponse = { status: "error", timestamp: new Date().toISOString() };
+      res.status(503).json(body);
+    }
   });
 
   // Webhooks are mounted before the body parser and the rate limiter on

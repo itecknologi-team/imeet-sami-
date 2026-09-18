@@ -1,4 +1,4 @@
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 
 WORKDIR /app
 
@@ -22,5 +22,13 @@ FROM caddy:2-alpine AS runtime
 
 COPY --from=build /app/dist /srv
 COPY Caddyfile /etc/caddy/Caddyfile
+
+# Caddy has no built-in low-privilege user (unlike the node image above) — this
+# mode needs no write access anywhere (auto_https/admin off, static files
+# served read-only), so a non-root user works, matching the backend image's
+# same "USER node" hardening.
+RUN addgroup -S caddy && adduser -S -G caddy caddy && \
+    chown -R caddy:caddy /srv /etc/caddy /config /data
+USER caddy
 
 EXPOSE 8080

@@ -229,8 +229,22 @@ export async function joinMeeting(
   passcode?: string,
 ) {
   const meeting = await findMeetingRowByCode(meetingCode);
+  const isHost = userId ? meeting.host_id === userId : Boolean(guestId) && meeting.host_guest_id === guestId;
+
   if (meeting.status === "ended") {
-    throw new AppError(400, "Meeting has ended");
+    // Like Zoom/Meet: the meeting link stays permanently valid for its host
+    // to restart — only non-hosts are locked out once it's ended, and only
+    // until the host rejoins. Without this, a host who ends (or is dropped
+    // from) their own meeting could never get back in via the same code.
+    if (!isHost) {
+      throw new AppError(400, "Meeting has ended");
+    }
+    const { rows: resumedRows } = await pool.query<{ started_at: string }>(
+      "UPDATE meetings SET status = 'active', ended_at = NULL WHERE id = $1 RETURNING started_at",
+      [meeting.id],
+    );
+    meeting.status = "active";
+    meeting.started_at = resumedRows[0].started_at;
   }
   if (meeting.passcode && !passcodeMatches(meeting.passcode, passcode)) {
     throw new AppError(403, "Incorrect passcode");
@@ -251,7 +265,6 @@ export async function joinMeeting(
     meeting.started_at = startedRows[0].started_at;
   }
 
-  const isHost = userId ? meeting.host_id === userId : Boolean(guestId) && meeting.host_guest_id === guestId;
   const role = isHost ? "host" : "participant";
   // ON CONFLICT (backed by partial unique indexes on active rows) makes this
   // safe against concurrent join calls for the same identity, instead of a
@@ -311,6 +324,38 @@ export async function joinMeeting(
     // The browser-facing URL, not the internal one the server SDK uses.
     livekitUrl: env.livekitPublicUrl,
   };
+}
+
+// Recordings/recap stay reachable long after a meeting ends (up to the
+// retention window), so — unlike isActiveParticipant below — this
+// deliberately does NOT require `left_at IS NULL` or an active meeting:
+// anyone who actually attended (or the host) can still look back at it,
+// but someone who merely knows/guessed the meeting code and never joined
+// cannot.
+export async function canAccessMeetingHistory(
+  meetingCode: string,
+  userId: string | null,
+  guestId?: string | null,
+): Promise<boolean> {
+  const meeting = await findMeetingRowByCode(meetingCode);
+  const isHost = userId ? meeting.host_id === userId : Boolean(guestId) && meeting.host_guest_id === guestId;
+  if (isHost) return true;
+
+  if (userId) {
+    const { rows } = await pool.query(
+      "SELECT 1 FROM meeting_participants WHERE meeting_id = $1 AND user_id = $2 LIMIT 1",
+      [meeting.id, userId],
+    );
+    return rows.length > 0;
+  }
+  if (guestId) {
+    const { rows } = await pool.query(
+      "SELECT 1 FROM meeting_participants WHERE meeting_id = $1 AND guest_id = $2 LIMIT 1",
+      [meeting.id, guestId],
+    );
+    return rows.length > 0;
+  }
+  return false;
 }
 
 // Socket identity is authenticated at connection time (realtime/socket.ts),
@@ -376,24 +421,38 @@ export async function endMeeting(meetingCode: string, userId: string | null, gue
     throw new AppError(403, "Only host can end the meeting");
   }
 
-  await pool.query(
-    "UPDATE meeting_participants SET left_at = NOW() WHERE meeting_id = $1 AND left_at IS NULL",
-    [meeting.id],
-  );
+  // Transactional so a crash/DB error between steps can't leave the meeting
+  // half-ended — e.g. participants marked "left" but status never flipped to
+  // "ended", or the cost never persisted.
+  const client = await pool.connect();
+  let totalCost: number;
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      "UPDATE meeting_participants SET left_at = NOW() WHERE meeting_id = $1 AND left_at IS NULL",
+      [meeting.id],
+    );
 
-  const { rows: costRows } = await pool.query<{ total_hours: string | null }>(
-    `SELECT SUM(EXTRACT(EPOCH FROM (left_at - joined_at)) / 3600) AS total_hours
-     FROM meeting_participants
-     WHERE meeting_id = $1`,
-    [meeting.id],
-  );
-  const totalHours = parseFloat(costRows[0]?.total_hours ?? "0") || 0;
-  const totalCost = Math.round(totalHours * parseFloat(meeting.hourly_rate) * 100) / 100;
+    const { rows: costRows } = await client.query<{ total_hours: string | null }>(
+      `SELECT SUM(EXTRACT(EPOCH FROM (left_at - joined_at)) / 3600) AS total_hours
+       FROM meeting_participants
+       WHERE meeting_id = $1`,
+      [meeting.id],
+    );
+    const totalHours = parseFloat(costRows[0]?.total_hours ?? "0") || 0;
+    totalCost = Math.round(totalHours * parseFloat(meeting.hourly_rate) * 100) / 100;
 
-  await pool.query(
-    "UPDATE meetings SET status = 'ended', ended_at = NOW(), total_cost = $2 WHERE id = $1",
-    [meeting.id, totalCost],
-  );
+    await client.query(
+      "UPDATE meetings SET status = 'ended', ended_at = NOW(), total_cost = $2 WHERE id = $1",
+      [meeting.id, totalCost],
+    );
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 
   assistantService.clearBuffer(meetingCode);
   captionsService.clearMeeting(meetingCode);

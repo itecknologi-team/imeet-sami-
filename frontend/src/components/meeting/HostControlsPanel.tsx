@@ -85,6 +85,18 @@ export function HostControlsPanel({ settings, onChange }: HostControlsPanelProps
           checked={settings.participantsCanReact}
           onToggle={(next) => onChange({ participantsCanReact: next })}
         />
+        <ToggleRow
+          label="Use the whiteboard"
+          description="Let participants draw on the whiteboard, not just view it. Off by default — only you can draw."
+          checked={settings.participantsCanUseWhiteboard}
+          onToggle={(next) => onChange({ participantsCanUseWhiteboard: next })}
+        />
+        <ToggleRow
+          label="Use the code editor"
+          description="Let participants edit the shared code editor, not just view it. Off by default — only you can edit."
+          checked={settings.participantsCanUseCodeEditor}
+          onToggle={(next) => onChange({ participantsCanUseCodeEditor: next })}
+        />
       </div>
     </div>
   );

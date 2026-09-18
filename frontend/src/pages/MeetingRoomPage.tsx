@@ -370,7 +370,14 @@ export function MeetingRoomPage() {
         </div>
       </div>
       <div className="relative flex flex-1 overflow-hidden">
-        <IconRail activeView={activeView} onChangeView={setActiveView} isHost={isHost} onNotify={pushNotification} />
+        <IconRail
+          activeView={activeView}
+          onChangeView={setActiveView}
+          isHost={isHost}
+          canUseWhiteboard={hostControls.participantsCanUseWhiteboard}
+          canUseCodeEditor={hostControls.participantsCanUseCodeEditor}
+          onNotify={pushNotification}
+        />
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           {activeView === "whiteboard" && (
             <div className="flex-1 overflow-hidden">

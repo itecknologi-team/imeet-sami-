@@ -1,4 +1,5 @@
 import { Route, BrowserRouter as Router, Routes } from "react-router-dom";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { AuthProvider } from "./hooks/useAuth";
 import { DashboardPage } from "./pages/DashboardPage";
@@ -14,51 +15,53 @@ import { WatchVideoPage } from "./pages/WatchVideoPage";
 
 function App() {
   return (
-    <Router>
-      <AuthProvider>
-        <Routes>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <DashboardPage />
-              </ProtectedRoute>
-            }
-          />
-          {/* Guests can join/host without an account — no ProtectedRoute here. */}
-          <Route path="/meeting/:meetingCode/ready" element={<MeetingReadyPage />} />
-          <Route path="/meeting/:meetingCode" element={<MeetingRoomPage />} />
-          <Route
-            path="/meeting/:meetingCode/recordings"
-            element={
-              <ProtectedRoute>
-                <RecordingsPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/videos/new"
-            element={
-              <ProtectedRoute>
-                <RecordVideoPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/videos/mine"
-            element={
-              <ProtectedRoute>
-                <MyVideosPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route path="/videos/:videoId" element={<WatchVideoPage />} />
-        </Routes>
-      </AuthProvider>
-    </Router>
+    <ErrorBoundary>
+      <Router>
+        <AuthProvider>
+          <Routes>
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup" element={<SignupPage />} />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoute>
+                  <DashboardPage />
+                </ProtectedRoute>
+              }
+            />
+            {/* Guests can join/host without an account — no ProtectedRoute here. */}
+            <Route path="/meeting/:meetingCode/ready" element={<MeetingReadyPage />} />
+            <Route path="/meeting/:meetingCode" element={<MeetingRoomPage />} />
+            <Route
+              path="/meeting/:meetingCode/recordings"
+              element={
+                <ProtectedRoute>
+                  <RecordingsPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/videos/new"
+              element={
+                <ProtectedRoute>
+                  <RecordVideoPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/videos/mine"
+              element={
+                <ProtectedRoute>
+                  <MyVideosPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route path="/videos/:videoId" element={<WatchVideoPage />} />
+          </Routes>
+        </AuthProvider>
+      </Router>
+    </ErrorBoundary>
   );
 }
 

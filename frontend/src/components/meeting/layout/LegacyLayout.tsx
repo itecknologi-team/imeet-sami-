@@ -1,3 +1,4 @@
+import { useElementSize } from "../../../hooks/useElementSize";
 import { ParticipantTile } from "./ParticipantTile";
 import type { LayoutParticipant } from "./types";
 
@@ -7,10 +8,15 @@ interface LegacyLayoutProps {
   onSpotlight: (id: string) => void;
 }
 
+const NARROW_BREAKPOINT = 900;
+
 // A deliberately static layout: whoever's "main" stays main, everyone else
 // stays in the same order in the side column — nothing reorders on speech.
 // For users who find the other modes' constant reshuffling distracting.
 export function LegacyLayout({ participants, pinnedId, onSpotlight }: LegacyLayoutProps) {
+  const { ref: containerRef, width: containerWidth } = useElementSize<HTMLDivElement>();
+  const isNarrow = containerWidth > 0 && containerWidth < NARROW_BREAKPOINT;
+
   if (participants.length === 0) return null;
 
   const mainIndex = pinnedId ? Math.max(0, participants.findIndex((p) => p.id === pinnedId)) : 0;
@@ -19,7 +25,10 @@ export function LegacyLayout({ participants, pinnedId, onSpotlight }: LegacyLayo
   const others = participants.filter((_, i) => i !== mainIndex);
 
   return (
-    <div className="flex min-h-0 w-full flex-1 gap-3 rounded-2xl bg-[#F4F7FA] p-3">
+    <div
+      ref={containerRef}
+      className={`flex min-h-0 w-full flex-1 gap-3 rounded-2xl bg-[#F4F7FA] p-3 ${isNarrow ? "flex-col" : "flex-row"}`}
+    >
       <div className="min-h-0 flex-1">
         <ParticipantTile
           id={main.id}
@@ -34,9 +43,15 @@ export function LegacyLayout({ participants, pinnedId, onSpotlight }: LegacyLayo
         />
       </div>
       {others.length > 0 && (
-        <div className="meeting-scroll-strip flex w-[220px] flex-shrink-0 flex-col gap-3 overflow-y-auto">
+        <div
+          className={
+            isNarrow
+              ? "meeting-scroll-strip flex h-32 flex-shrink-0 gap-3 overflow-x-auto"
+              : "meeting-scroll-strip flex w-[220px] flex-shrink-0 flex-col gap-3 overflow-y-auto"
+          }
+        >
           {others.map((p) => (
-            <div key={p.id} className="aspect-[16/10] flex-shrink-0">
+            <div key={p.id} className={isNarrow ? "aspect-[16/10] h-full flex-shrink-0" : "aspect-[16/10] flex-shrink-0"}>
               <ParticipantTile
                 id={p.id}
                 participant={p.participant}

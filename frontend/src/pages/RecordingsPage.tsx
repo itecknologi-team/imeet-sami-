@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import * as api from "../services/api";
 import { useAuth } from "../hooks/useAuth";
+import { getGuestId } from "../lib/guestId";
 
 function formatDuration(seconds: number | null): string {
   if (seconds === null) return "";
@@ -28,7 +29,7 @@ export function RecordingsPage() {
     if (!accessToken) return;
     try {
       await api.deleteRecording(accessToken, meetingCode, recordingId);
-      const res = await api.getRecordings(meetingCode);
+      const res = await api.getRecordings(meetingCode, accessToken, getGuestId());
       setRecordings(res.recordings);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete recording");
@@ -63,7 +64,7 @@ export function RecordingsPage() {
   useEffect(() => {
     let cancelled = false;
     api
-      .getRecordings(meetingCode)
+      .getRecordings(meetingCode, accessToken, getGuestId())
       .then((res) => {
         if (!cancelled) setRecordings(res.recordings);
       })
@@ -73,7 +74,7 @@ export function RecordingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [meetingCode]);
+  }, [meetingCode, accessToken]);
 
   useEffect(() => {
     if (!user) return;
@@ -99,7 +100,7 @@ export function RecordingsPage() {
 
     async function poll() {
       try {
-        const res = await api.getRecap(meetingCode);
+        const res = await api.getRecap(meetingCode, accessToken, getGuestId());
         if (cancelled) return;
         setRecap(res);
         const done = isTerminal(res.transcript?.status) && isTerminal(res.summary?.status);
@@ -116,7 +117,7 @@ export function RecordingsPage() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [meetingCode, recordings]);
+  }, [meetingCode, recordings, accessToken]);
 
   return (
     <div className="min-h-screen bg-white p-8 dark:bg-gray-900">

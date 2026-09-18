@@ -1,5 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import * as recordingsService from "./recordings.service";
+import * as meetingsService from "../meetings/meetings.service";
+import { AppError } from "../../shared/errors";
 
 export async function startRecordingHandler(req: Request, res: Response, next: NextFunction) {
   try {
@@ -21,6 +23,13 @@ export async function stopRecordingHandler(req: Request, res: Response, next: Ne
 
 export async function listRecordingsHandler(req: Request, res: Response, next: NextFunction) {
   try {
+    const guestId = typeof req.query.guestId === "string" ? req.query.guestId : null;
+    const allowed = await meetingsService.canAccessMeetingHistory(
+      req.params.meetingCode,
+      req.user?.id ?? null,
+      guestId,
+    );
+    if (!allowed) throw new AppError(403, "You weren't a participant in this meeting");
     const result = await recordingsService.listRecordings(req.params.meetingCode);
     res.status(200).json(result);
   } catch (err) {

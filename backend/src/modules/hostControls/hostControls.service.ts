@@ -5,13 +5,15 @@ export interface HostControlSettings {
   participantsCanPresent: boolean;
   participantsCanChat: boolean;
   participantsCanReact: boolean;
+  participantsCanUseWhiteboard: boolean;
+  participantsCanUseCodeEditor: boolean;
 }
 
 // Permissive defaults for the media/chat/reaction basics (an untouched
-// meeting behaves like before this feature existed); the two
-// moderation-adjacent ones (admitting/removing people, muting others) default
-// off since those are host-only powers until the host explicitly delegates
-// them.
+// meeting behaves like before this feature existed); the moderation-adjacent
+// ones (admitting/removing people, muting others) and the whiteboard/code
+// editor default off since those are host-only powers until the host
+// explicitly delegates them.
 const DEFAULT_SETTINGS: HostControlSettings = {
   participantsCanAdmitOrRemove: false,
   participantsCanMuteOthers: false,
@@ -19,6 +21,8 @@ const DEFAULT_SETTINGS: HostControlSettings = {
   participantsCanPresent: true,
   participantsCanChat: true,
   participantsCanReact: true,
+  participantsCanUseWhiteboard: false,
+  participantsCanUseCodeEditor: false,
 };
 
 const settings = new Map<string, HostControlSettings>();
