@@ -60,7 +60,18 @@ export function PreJoinLobby({ meetingTitle, initialName, nameEditable, submitti
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: constraints?.videoDeviceId ? { deviceId: { exact: constraints.videoDeviceId } } : true,
-        audio: constraints?.audioDeviceId ? { deviceId: { exact: constraints.audioDeviceId } } : true,
+        // Explicit rather than relying on the browser's default constraints
+        // — this stream is handed off as-is to become the actual published
+        // mic track (see preAcquiredStream in useMeeting.ts), so without
+        // echo cancellation here, playing a remote participant's voice out
+        // of speakers (no headphones) gets picked back up by this mic and
+        // sent right back to them as an echo of their own voice.
+        audio: {
+          ...(constraints?.audioDeviceId ? { deviceId: { exact: constraints.audioDeviceId } } : {}),
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
       });
       streamRef.current = stream;
       if (videoRef.current) videoRef.current.srcObject = stream;

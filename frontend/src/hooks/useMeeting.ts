@@ -178,6 +178,18 @@ export function useMeeting(
       videoCaptureDefaults: {
         resolution: VideoPresets.h720.resolution,
       },
+      // Explicit rather than relying on the browser's default constraints —
+      // covers any mic capture LiveKit does internally (switching devices,
+      // re-enabling the mic later) that doesn't go through PreJoinLobby's own
+      // getUserMedia call. Without echo cancellation, playing a remote
+      // participant's voice out of speakers (no headphones) gets picked back
+      // up by the mic and sent right back to them as an echo of their own
+      // voice.
+      audioCaptureDefaults: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
     });
   });
   const [isE2EEEnabled, setIsE2EEEnabled] = useState(false);
