@@ -24,6 +24,7 @@ import { JoinRequestsPanel } from "../components/meeting/JoinRequestsPanel";
 import { LayoutRenderer } from "../components/meeting/layout/LayoutRenderer";
 import { MeetingTimer } from "../components/meeting/MeetingTimer";
 import { NotificationToast } from "../components/meeting/NotificationToast";
+import { ParticipantAudio } from "../components/meeting/ParticipantAudio";
 import { ParticipantList } from "../components/meeting/ParticipantList";
 import { RecordingIndicator } from "../components/meeting/RecordingIndicator";
 import { PreJoinLobby } from "../components/meeting/PreJoinLobby";
@@ -332,6 +333,33 @@ export function MeetingRoomPage() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-white">
+      {/* One <audio> per remote participant, mounted here once regardless of
+          which tab/layout is active or how many video tiles currently render
+          them (main stage + strip thumbnail, a screen-share tile alongside
+          their own camera tile, ...) — attaching a participant's mic once
+          per tile instead plays the same live audio out of multiple elements
+          at once, audible to everyone as an echo the moment a tile
+          duplicates, which screen sharing always does. Pinned participants
+          always get full volume; everyone else gets spatial gain/pan only in
+          Virtual Office. */}
+      {remoteParticipants.map((participant) => {
+        const spatial =
+          activeView === "virtual-office" && participant.identity !== pinnedUserId
+            ? computeGainPan(
+                myAvatarPosition,
+                avatarPositions[participant.identity] ?? VIRTUAL_OFFICE_DEFAULT_POSITION,
+              )
+            : { gain: 1, pan: 0 };
+        return (
+          <ParticipantAudio
+            key={participant.identity}
+            participant={participant}
+            audioContext={audioContext}
+            gain={spatial.gain}
+            pan={spatial.pan}
+          />
+        );
+      })}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white px-4 py-2.5">
         <div className="flex min-w-0 items-baseline gap-3">
           <span className="truncate text-sm font-semibold uppercase tracking-wide text-brand-text">
@@ -466,7 +494,6 @@ export function MeetingRoomPage() {
                       participants.find((p) => p.userId === pinnedRemoteParticipant!.identity)?.name ??
                       pinnedRemoteParticipant!.identity
                     }
-                    audioContext={audioContext}
                     isPinned
                     isHandRaised={raisedHands.includes(pinnedRemoteParticipant!.identity)}
                   />
@@ -501,7 +528,6 @@ export function MeetingRoomPage() {
                     <VideoTile
                       participant={participant}
                       name={participants.find((p) => p.userId === participant.identity)?.name ?? participant.identity}
-                      audioContext={audioContext}
                       isHandRaised={raisedHands.includes(participant.identity)}
                     />
                   </div>
@@ -527,26 +553,14 @@ export function MeetingRoomPage() {
                     isHandRaised={raisedHands.includes(currentUser?.id ?? "")}
                   />
                 )}
-                {gridRemoteParticipants.map((participant) => {
-                  const spatial =
-                    activeView === "virtual-office"
-                      ? computeGainPan(
-                          myAvatarPosition,
-                          avatarPositions[participant.identity] ?? VIRTUAL_OFFICE_DEFAULT_POSITION,
-                        )
-                      : { gain: 1, pan: 0 };
-                  return (
-                    <VideoTile
-                      key={participant.identity}
-                      participant={participant}
-                      name={participants.find((p) => p.userId === participant.identity)?.name ?? participant.identity}
-                      audioContext={audioContext}
-                      gain={spatial.gain}
-                      pan={spatial.pan}
-                      isHandRaised={raisedHands.includes(participant.identity)}
-                    />
-                  );
-                })}
+                {gridRemoteParticipants.map((participant) => (
+                  <VideoTile
+                    key={participant.identity}
+                    participant={participant}
+                    name={participants.find((p) => p.userId === participant.identity)?.name ?? participant.identity}
+                    isHandRaised={raisedHands.includes(participant.identity)}
+                  />
+                ))}
               </div>
             )}
           </div>

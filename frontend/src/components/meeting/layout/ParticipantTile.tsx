@@ -49,7 +49,6 @@ function ParticipantTileImpl({
   className = "",
 }: ParticipantTileProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
   const [hasVideo, setHasVideo] = useState(() => isPublicationLive(participant.getTrackPublication(videoSource)));
   const [isMicMuted, setIsMicMuted] = useState(
     () => participant.getTrackPublication(Track.Source.Microphone)?.isMuted ?? true,
@@ -62,16 +61,18 @@ function ParticipantTileImpl({
 
   useEffect(() => {
     const video = videoRef.current;
-    const audio = audioRef.current;
 
+    // Audio is NOT handled here — a dedicated ParticipantAudio component is
+    // mounted once per remote participant regardless of how many
+    // ParticipantTile instances render them (main stage + strip thumbnail,
+    // screen-share tile + camera tile, ...). Attaching the mic per-tile here
+    // instead would play the same live audio out of multiple elements at
+    // once — audible as an echo/doubling the moment a participant appears in
+    // more than one tile, which screen sharing always causes.
     function attachExisting() {
       const videoPub = participant.getTrackPublication(videoSource);
       if (videoPub?.track && video) {
         videoPub.track.attach(video);
-      }
-      const audioPub = participant.getTrackPublication(Track.Source.Microphone);
-      if (!isLocal && audioPub?.track && audio) {
-        audioPub.track.attach(audio);
       }
     }
     attachExisting();
@@ -84,8 +85,6 @@ function ParticipantTileImpl({
     function handleTrackEvent(track: RemoteTrack, publication: RemoteTrackPublication) {
       if (publication.source === videoSource && video) {
         track.attach(video);
-      } else if (publication.source === Track.Source.Microphone && !isLocal && audio) {
-        track.attach(audio);
       }
       refresh();
     }
@@ -110,9 +109,8 @@ function ParticipantTileImpl({
       participant.off(ParticipantEvent.LocalTrackPublished, handleLocalTrackEvent);
       participant.off(ParticipantEvent.LocalTrackUnpublished, handleLocalTrackEvent);
       participant.getTrackPublication(videoSource)?.track?.detach();
-      participant.getTrackPublication(Track.Source.Microphone)?.track?.detach();
     };
-  }, [participant, isLocal, videoSource]);
+  }, [participant, videoSource]);
 
   // Performance: pause the remote video stream entirely for tiles collapsed
   // into overflow (or not currently visible in the current layout), and
@@ -170,8 +168,6 @@ function ParticipantTileImpl({
             <InitialsAvatar name={name} size="xl" />
           </div>
         )}
-        {!isLocal && <audio ref={audioRef} autoPlay />}
-
         {isMicMuted && (
           <span
             className="absolute left-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/55 text-white backdrop-blur-sm"
