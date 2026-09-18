@@ -188,13 +188,15 @@ frontend lint/build/audit, both container images, and a validation of
 class of failure that only appears in a real production build and never in the
 dev server.
 
-### Deploy (manual by default)
+### Deploy (automatic on push to main)
 
-**Actions → Deploy to production → Run workflow.**
+Every push to `main` deploys automatically — by explicit choice, accepting
+that a push landing mid-meeting restarts the stack and drops live calls. To
+go back to manual-only, remove the `push:` trigger at the top of
+`deploy.yml` and keep `workflow_dispatch`.
 
-It is manual on purpose: a video conferencing server should not restart
-underneath live meetings because someone merged a README fix. To deploy on
-every merge instead, uncomment the `push:` trigger at the top of `deploy.yml`.
+**Actions → Deploy to production → Run workflow** still works for a manual
+re-run (retrying a failed deploy, or redeploying without a new commit).
 
 The job: verifies the env file → records the current revision → builds images →
 starts postgres/redis and waits for health → applies migrations (toggleable) →
@@ -262,10 +264,10 @@ Worth deciding on before this carries real traffic:
 - **No automated backups.** Postgres and MinIO hold all meeting data on local
   volumes. Add a scheduled `pg_dump` + `mc mirror` to off-host storage.
 - **Single host, no redundancy.** Any restart drops live meetings.
-- **Meeting recap/recordings listings are reachable by meeting code alone.**
-  This matches the app's existing model (the code is the capability to join at
-  all), and objects are now private and served via short-lived signed URLs —
-  but the listing itself is not additionally access-controlled.
+- ~~Meeting recap/recordings listings are reachable by meeting code alone~~ —
+  fixed: both endpoints now require having been a participant or the host
+  (`meetingsService.canAccessMeetingHistory`), for signed-in and guest users
+  alike.
 - **Meeting passcodes are stored in plaintext** in the `meetings` table. The
   comparison is constant-time now, but anyone with database access can read
   them.

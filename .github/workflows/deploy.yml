@@ -15,17 +15,18 @@ name: Deploy to production
 # Setup for the runner and the server-side .env is in deploy/DEPLOYMENT.md.
 
 on:
-  # Deploys are deliberately manual by default — a video meeting server should
-  # not restart underneath live meetings because someone merged a README fix.
-  # To deploy automatically on every merge to main, uncomment the push trigger.
+  # Auto-deploys on every push to main, by explicit choice — accepting that a
+  # push landing mid-meeting will restart the stack and drop live calls.
+  # workflow_dispatch is kept too, for a manual re-run (e.g. retrying a failed
+  # deploy, or redeploying without a new commit).
   workflow_dispatch:
     inputs:
       run_migrations:
         description: "Apply pending database migrations"
         type: boolean
         default: true
-  # push:
-  #   branches: [main]
+  push:
+    branches: [main]
 
 # Never let two deploys touch the stack at once; queue instead of cancelling,
 # so a run that is already mutating containers is allowed to finish.
@@ -113,7 +114,11 @@ jobs:
         run: docker compose --env-file "$ENV_FILE" --profile init run --rm minio-init
 
       - name: Apply database migrations
-        if: ${{ inputs.run_migrations }}
+        # inputs.run_migrations only exists on a workflow_dispatch run — a
+        # push-triggered deploy has no inputs at all, so defaulting to true
+        # there keeps migrations running on every push instead of silently
+        # skipping them just because this wasn't a manual run.
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_migrations }}
         # migrate.ts is idempotent — it tracks applied files in
         # schema_migrations and each file runs in its own transaction.
         run: |
